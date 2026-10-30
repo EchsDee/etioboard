@@ -147,9 +147,11 @@ class MixerPage(QWidget):
         routing.body.addWidget(label("Monitor (o que você ouve)", "H3"))
         routing.body.addWidget(label("O monitor é a sua saída de fones/alto-falantes. Ele não afeta o que os "
                                      "outros ouvem.", "Faint", wrap=True))
-        self.mon_voice = QCheckBox("Ouvir minha voz processada")
+        self.mon_voice = QCheckBox("Playback: ouvir minha voz processada")
         self.mon_voice.setChecked(bool(ctl.settings.get("mixer.monitor_voice")))
-        self.mon_voice.toggled.connect(lambda on: ctl.set_monitor_sources(voice=on))
+        self.mon_voice.toggled.connect(ctl.set_playback)
+        ctl.playback_changed.connect(lambda on: (self.mon_voice.blockSignals(True), self.mon_voice.setChecked(on),
+                                                 self.mon_voice.blockSignals(False)))
         self.mon_sb = QCheckBox("Ouvir o soundboard")
         self.mon_sb.setChecked(bool(ctl.settings.get("mixer.monitor_soundboard")))
         self.mon_sb.toggled.connect(lambda on: ctl.set_monitor_sources(soundboard=on))
@@ -197,7 +199,7 @@ class MixerPage(QWidget):
                 w.deleteLater()
         for row, sid in enumerate(playing):
             s = self.ctl.snippet(sid)
-            name = f"{s.icon}  {s.name}" if s else f"#{sid}"
+            name = f"{s.icon}  {s.name}" if s else ("🎙️  Gravação de teste" if sid < 0 else f"#{sid}")
             if playing[sid][1]:
                 name += "  (prévia)"
             self.active_lay.addWidget(label(name), row, 0)

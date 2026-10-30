@@ -166,6 +166,7 @@ class MainWindow(QMainWindow):
         ctl.engine_status.connect(self._on_status)
         ctl.mute_changed.connect(self._sync_quick)
         ctl.voice_enabled_changed.connect(lambda _on: self._sync_quick())
+        ctl.playback_changed.connect(lambda _on: self._sync_quick())
         self._on_status(ctl.status)
         self._sync_quick()
         self.go(int(ctl.settings.get("ui.last_page", 0) or 0))
@@ -221,6 +222,14 @@ class MainWindow(QMainWindow):
         self.status_chip = QLabel()
         h.addWidget(self.status_chip)
 
+        self.q_playback = button("Playback", "headphones")
+        self.q_playback.setObjectName("BigToggle")
+        self.q_playback.setCheckable(True)
+        self.q_playback.setToolTip("Ouvir sua voz processada ao vivo nos fones (monitor).\n"
+                                   "Só você ouve; não afeta o que vai para o Discord/jogo.")
+        self.q_playback.clicked.connect(self.ctl.set_playback)
+        h.addWidget(self.q_playback)
+
         self.q_voice = button("Voz", "wave")
         self.q_voice.setObjectName("BigToggle")
         self.q_voice.setCheckable(True)
@@ -250,6 +259,9 @@ class MainWindow(QMainWindow):
         self.tray_voice = QAction("Modificador de voz", menu, checkable=True)
         self.tray_voice.triggered.connect(self.ctl.set_voice_enabled)
         menu.addAction(self.tray_voice)
+        self.tray_playback = QAction("Playback (ouvir minha voz)", menu, checkable=True)
+        self.tray_playback.triggered.connect(self.ctl.set_playback)
+        menu.addAction(self.tray_playback)
         menu.addAction("Parar todos os sons", self.ctl.stop_all)
         menu.addSeparator()
         menu.addAction("Sair", self.quit)
@@ -344,6 +356,8 @@ class MainWindow(QMainWindow):
         self.q_mute.setIcon(icons.icon("mic-off" if muted else "mic", "#F87171" if muted else p.text, 18))
         self.q_voice.setChecked(voice)
         self.q_voice.setText("Voz ON" if voice else "Voz OFF")
+        self.q_playback.setChecked(self.ctl.playback)
+        self.tray_playback.setChecked(self.ctl.playback)
         self.tray_mute.setChecked(muted)
         self.tray_voice.setChecked(voice)
 

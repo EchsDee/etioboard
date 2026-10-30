@@ -91,3 +91,17 @@ def test_delete_snippet_unregisters_hotkey(ctl, tone_file):
     ctl.assign_hotkey(f"snippet:{sid}", "Ctrl+Alt+Shift+F22")
     ctl.delete_snippet(sid)
     assert f"snippet:{sid}" not in ctl.hotkeys.registered()
+
+
+def test_playback_toggle_updates_mixer_and_setting(ctl):
+    seen = []
+    ctl.playback_changed.connect(seen.append)
+    ctl.set_playback(True)
+    assert ctl.playback and ctl.engine.mixer.monitor_voice and seen == [True]
+    ctl._on_hotkey("action:toggle_playback")
+    assert not ctl.playback and ctl.settings.get("mixer.monitor_voice") is False
+
+
+def test_record_test_requires_running_audio(ctl):
+    ctl.record_test(1.0)
+    assert ctl.test_state == "idle"  # motor parado: só avisa

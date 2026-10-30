@@ -301,7 +301,8 @@ class SettingsPage(QWidget):
         api = self.api.currentData()
 
         self.input.clear()
-        self.input.addItem("Padrão do sistema", DEFAULT)
+        phys_in = dm.physical_default(api, "input")
+        self.input.addItem(f"Padrão do sistema ({phys_in.name})" if phys_in else "Padrão do sistema", DEFAULT)
         for d in dm.inputs(api):
             self.input.addItem(d.name, (d.name, api))
         others = [d for d in dm.inputs(None) if d.hostapi != api]
@@ -324,7 +325,9 @@ class SettingsPage(QWidget):
         self.virtual.setCurrentIndex(max(0, self.virtual.findData(saved_v)) if saved_v else 0)
 
         self.monitor.clear()
-        self.monitor.addItem("Saída padrão do sistema", DEFAULT)
+        phys_out = dm.physical_default(api, "output")
+        self.monitor.addItem(f"Saída padrão do sistema ({phys_out.name})" if phys_out else "Saída padrão do sistema",
+                             DEFAULT)
         for d in dm.outputs(api):
             if not d.virtual_kind():
                 self.monitor.addItem(d.name, d.name)

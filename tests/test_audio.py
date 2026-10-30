@@ -132,3 +132,16 @@ def test_soft_limiter_never_exceeds_one():
 def test_virtual_device_detection(name, kind):
     d = DeviceInfo(0, name, "Windows WASAPI", 0, 2, 48000.0)
     assert d.virtual_kind() == kind
+
+
+def test_test_recorder_collects_and_delivers():
+    from audio.test_recorder import TestRecorder
+    rec = TestRecorder()
+    got = []
+    rec.start(0.01, 48000, got.append)  # 480 frames
+    for i in range(3):
+        rec.feed(np.full((256, 2), i + 1, np.float32))
+    assert len(got) == 1 and got[0].shape == (480, 2)
+    assert got[0][0, 0] == 1 and got[0][300, 0] == 2 and not rec.active
+    rec.feed(np.ones((256, 2), np.float32))  # depois de terminar, ignora
+    assert len(got) == 1

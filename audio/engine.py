@@ -25,6 +25,7 @@ from audio.audio_mixer import AudioMixer
 from audio.device_manager import DeviceInfo, DeviceManager
 from audio.ring_buffer import RingBuffer
 from audio.soundboard_player import SoundboardPlayer
+from audio.test_recorder import TestRecorder
 from audio.voice_processor import VoiceProcessor
 
 log = logging.getLogger(__name__)
@@ -129,7 +130,12 @@ class _Session:
         in_dev = dm.find(cfg.input_device, in_api, "input")
         if cfg.input_device and in_dev is None:
             st.warnings.append(f"Microfone '{cfg.input_device}' não encontrado; usando o padrão.")
-        in_dev = in_dev or dm.default_device(in_api, "input")
+        if in_dev is None:
+            in_dev = dm.physical_default(in_api, "input")
+            if dm.default_is_virtual(in_api, "input") and in_dev is not None:
+                st.warnings.append(f"O microfone padrão do Windows é um cabo virtual; usando '{in_dev.name}'.")
+        elif in_dev.is_virtual:
+            st.warnings.append(f"A entrada '{in_dev.name}' é um cabo virtual, não um microfone.")
         if in_dev is None:
             # Sem microfone nesta API: procura o melhor em outra (os streams são independentes).
             in_dev = dm.best_input([a for a in apis if a != in_api])
@@ -150,7 +156,11 @@ class _Session:
             mon_dev = dm.find(cfg.monitor_device, hostapi, "output") if cfg.monitor_device else None
             if cfg.monitor_device and mon_dev is None:
                 st.warnings.append(f"Saída de monitor '{cfg.monitor_device}' não encontrada; usando a padrão.")
-            mon_dev = mon_dev or dm.default_device(hostapi, "output")
+            if mon_dev is None:
+                mon_dev = dm.physical_default(hostapi, "output")
+                if dm.default_is_virtual(hostapi, "output"):
+                    st.warnings.append("A saída padrão do Windows é um cabo virtual: o som do PC (jogos, vídeos) "
+                                       "está indo para o cabo. Volte seus fones/alto-falantes como padrão no Windows.")
             if mon_dev and virt_dev and mon_dev.index == virt_dev.index:
                 mon_dev = None  # evita abrir o mesmo dispositivo duas vezes
 
@@ -289,6 +299,7 @@ class _Session:
         sb_main, sb_preview = eng.soundboard.render(len(mic))
         want_monitor = any(o.kind == "monitor" for o in self.outputs)
         out, mon = eng.mixer.mix(voice, sb_main, sb_preview, want_monitor)
+        eng.recorder.feed(out)
         for o in self.outputs:
             data = out if o.kind == "virtual" else mon
             if o.channels == 1:
@@ -349,6 +360,7 @@ class AudioEngine:
         self.soundboard = SoundboardPlayer(48000)
         self.mixer = AudioMixer()
         self.cache = SampleCache()
+        self.recorder = TestRecorder()
         self.config = EngineConfig()
         self._status = EngineStatus()
         self._session: _Session | None = None
@@ -384,6 +396,11 @@ class AudioEngine:
     @property
     def running(self) -> bool:
         return self._session is not None
+
+    @property
+    def has_monitor(self) -> bool:
+        s = self._session
+        return bool(s and any(o.kind == "monitor" for o in s.outputs))
 
     def levels(self) -> dict[str, float]:
         lv = dict(self.mixer.levels)

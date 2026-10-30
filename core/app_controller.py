@@ -32,7 +32,10 @@ GLOBAL_ACTIONS: dict[str, str] = {
     "next_preset": "Próximo preset de voz",
     "prev_preset": "Preset de voz anterior",
     "stop_all": "Interromper todos os sons",
+    "toggle_playback": "Ativar / desativar playback (ouvir minha voz)",
 }
+
+TEST_PLAYBACK_ID = -1  # id reservado no soundboard para a gravação de teste
 
 VOLUME_KEYS = ("mixer.mic_volume", "mixer.voice_volume", "mixer.soundboard_volume",
                "mixer.master_volume", "mixer.monitor_volume")
@@ -53,6 +56,9 @@ class AppController(QObject):
     show_window_requested = Signal()
     cable_install_progress = Signal(str, float)
     cable_install_finished = Signal(bool, str)
+    playback_changed = Signal(bool)
+    test_state_changed = Signal(str)      # recording | playing | idle
+    _test_recorded = Signal(object)
 
     _hotkey_fired = Signal(str)
     _status_bg = Signal(object)
@@ -76,6 +82,8 @@ class AppController(QObject):
         self._hotkey_fired.connect(self._on_hotkey)
         self._status_bg.connect(self._on_status)
         self._play_failed.connect(lambda msg: self.notify.emit("error", msg))
+        self._test_recorded.connect(self._play_test_recording)
+        self._test_state = "idle"
         self.engine.add_status_listener(self._status_bg.emit)
 
         self._saved_state: dict = {}
@@ -322,6 +330,69 @@ class AppController(QObject):
             self.settings.set("mixer.monitor_soundboard", bool(soundboard))
         self.engine.mixer.set_monitor_sources(voice, soundboard)
         self.mixer_changed.emit()
+        if voice is not None:
+            self.playback_changed.emit(bool(voice))
+
+    # ---------------------------------------------------------------- playback
+    @property
+    def playback(self) -> bool:
+        """Playback ao vivo: ouvir a própria voz processada no monitor (fones)."""
+        return bool(self.settings.get("mixer.monitor_voice"))
+
+    def set_playback(self, enabled: bool) -> None:
+        self.set_monitor_sources(voice=bool(enabled))
+        if enabled and self.engine.running and not self.engine.has_monitor:
+            self.notify.emit("warning", "Nenhuma saída de monitor ativa. Ative-a em Configurações → Áudio.")
+
+    def toggle_playback(self) -> None:
+        self.set_playback(not self.playback)
+        self.notify.emit("info", "Playback " + ("ativado" if self.playback else "desativado"))
+
+    @property
+    def test_state(self) -> str:
+        return self._test_state
+
+    def test_progress(self) -> float:
+        if self._test_state == "recording":
+            return self.engine.recorder.progress
+        if self._test_state == "playing":
+            info = self.engine.soundboard.playing.get(TEST_PLAYBACK_ID)
+            if info is None:
+                self._set_test_state("idle")
+                return 0.0
+            return info[0]
+        return 0.0
+
+    def _set_test_state(self, state: str) -> None:
+        if state != self._test_state:
+            self._test_state = state
+            self.test_state_changed.emit(state)
+
+    def record_test(self, seconds: float = 5.0) -> None:
+        """Grava alguns segundos do que os outros ouvem e toca de volta só no monitor."""
+        if self._test_state != "idle":
+            self.cancel_test()
+            return
+        if not self.engine.running:
+            self.notify.emit("warning", "O áudio não está ativo.")
+            return
+        if not self.engine.has_monitor:
+            self.notify.emit("warning", "Nenhuma saída de monitor ativa para ouvir a gravação. "
+                                        "Ative-a em Configurações → Áudio.")
+            return
+        self.engine.recorder.start(seconds, self.engine.config.samplerate, self._test_recorded.emit)
+        self._set_test_state("recording")
+
+    def _play_test_recording(self, data) -> None:
+        if self._test_state != "recording":
+            return
+        self.engine.soundboard.play(TEST_PLAYBACK_ID, data, volume=1.0, preview=True, mode="restart")
+        self._set_test_state("playing")
+
+    def cancel_test(self) -> None:
+        self.engine.recorder.cancel()
+        self.engine.soundboard.stop(TEST_PLAYBACK_ID)
+        self._set_test_state("idle")
 
     def levels(self) -> dict[str, float]:
         return self.engine.levels()
@@ -514,6 +585,8 @@ class AppController(QObject):
             self.cycle_preset(-1)
         elif ident == "stop_all":
             self.stop_all()
+        elif ident == "toggle_playback":
+            self.toggle_playback()
 
     # ================================================================ cabo virtual
     @property

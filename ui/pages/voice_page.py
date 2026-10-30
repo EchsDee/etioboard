@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QInputDialog,
+    QProgressBar,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -131,6 +132,33 @@ class VoicePage(QWidget):
         row.addWidget(save_as)
         bar.body.addLayout(row)
 
+        # --- playback / teste de voz
+        test = Card(padding=12)
+        trow = QHBoxLayout()
+        trow.setSpacing(10)
+        trow.addWidget(label("Ouvir como está", "H3"))
+        self.playback = ToggleSwitch(ctl.playback)
+        self.playback.toggled.connect(ctl.set_playback)
+        self.playback.setToolTip("Playback ao vivo: sua voz processada nos fones (com um pequeno atraso).")
+        trow.addWidget(self.playback)
+        trow.addWidget(label("Playback ao vivo", "Dim"))
+        trow.addSpacing(16)
+        self.test_btn = button("Gravar teste (5 s)", "mic")
+        self.test_btn.setToolTip("Grava 5 segundos do que os outros ouvem (voz + efeitos + sons) e toca de "
+                                 "volta só nos seus fones. Bom para ouvir sem o atraso do playback ao vivo.")
+        self.test_btn.clicked.connect(lambda: ctl.record_test(5.0))
+        trow.addWidget(self.test_btn)
+        self.test_bar = QProgressBar()
+        self.test_bar.setRange(0, 1000)
+        self.test_bar.setTextVisible(False)
+        self.test_bar.setFixedHeight(6)
+        self.test_bar.setMaximumWidth(220)
+        trow.addWidget(self.test_bar, 1)
+        self.test_label = label("", "Faint")
+        trow.addWidget(self.test_label)
+        trow.addStretch(1)
+        test.body.addLayout(trow)
+
         # --- cartões
         self.cards: dict[str, EffectCard] = {}
         grid_host = QWidget()
@@ -156,11 +184,15 @@ class VoicePage(QWidget):
         root.setSpacing(14)
         root.addLayout(head)
         root.addWidget(bar)
+        root.addWidget(test)
         root.addWidget(scroll, 1)
 
         ctl.voice_state_changed.connect(self.load_state)
         ctl.voice_modified_changed.connect(self._set_modified)
         ctl.voice_enabled_changed.connect(self.master.setCheckedSilently)
+        ctl.playback_changed.connect(self.playback.setCheckedSilently)
+        ctl.test_state_changed.connect(self._test_state)
+        self._test_state("idle")
         ctl.presets_changed.connect(self.reload_presets)
         ctl.active_preset_changed.connect(lambda _id: self.reload_presets())
         self.reload_presets()
@@ -196,6 +228,16 @@ class VoicePage(QWidget):
             self.ctl.create_preset(name.strip(), from_current=True)
             self.ctl.notify.emit("success", f"Preset “{name.strip()}” criado")
 
+    def _test_state(self, state: str) -> None:
+        texts = {"idle": "Gravar teste (5 s)", "recording": "Parar gravação", "playing": "Parar"}
+        self.test_btn.setText(texts[state])
+        self.test_bar.setVisible(state != "idle")
+        self.test_label.setText({"recording": "● Gravando… fale agora", "playing": "▶ Ouvindo a gravação",
+                                 "idle": ""}[state])
+        self.test_label.setStyleSheet("color: #EF4444;" if state == "recording" else "")
+
     def tick(self, levels: dict) -> None:
+        if self.ctl.test_state != "idle":
+            self.test_bar.setValue(int(self.ctl.test_progress() * 1000))
         self.in_meter.set_level(levels.get("input", 0.0))
         self.out_meter.set_level(levels.get("processed", 0.0))

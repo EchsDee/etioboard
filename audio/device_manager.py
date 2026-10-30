@@ -22,6 +22,15 @@ VIRTUAL_OUTPUT_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("Virtual Audio Cable", re.compile(r"\bline\s*\d+\s*\(virtual audio cable\)", re.I)),
 ]
 
+# Dispositivos de ENTRADA que são a outra ponta de um cabo virtual (nunca são um microfone real).
+VIRTUAL_INPUT_PATTERNS: list[re.Pattern] = [
+    re.compile(r"cable\s*(?:-\w\s*)?output", re.I),
+    re.compile(r"vb-audio", re.I),
+    re.compile(r"hi-fi cable output", re.I),
+    re.compile(r"voicemeeter\s*(?:aux\s*|vaio3\s*)?out", re.I),
+    re.compile(r"virtual audio cable", re.I),
+]
+
 VB_CABLE_URL = "https://vb-audio.com/Cable/"
 
 
@@ -41,6 +50,12 @@ class DeviceInfo:
     @property
     def is_output(self) -> bool:
         return self.max_output_channels > 0
+
+    @property
+    def is_virtual(self) -> bool:
+        if self.is_output and self.virtual_kind():
+            return True
+        return self.is_input and any(p.search(self.name) for p in VIRTUAL_INPUT_PATTERNS)
 
     def virtual_kind(self) -> str | None:
         if not self.is_output:
@@ -152,11 +167,29 @@ class DeviceManager:
         score = 0
         if any(k in name for k in ("mic", "microfone", "microphone", "headset")):
             score += 3
-        if any(k in name for k in ("voicemeeter", "cable", "stereo mix", "mixagem", "what u hear", "virtual")):
-            score -= 4
+        if d.is_virtual or any(k in name for k in ("stereo mix", "mixagem", "what u hear")):
+            score -= 6
         if "line" in name or "entrada" in name:
             score -= 1
         return score
+
+    def physical_default(self, hostapi: str, kind: str) -> DeviceInfo | None:
+        """Padrão do sistema, mas ignorando cabos virtuais.
+
+        O instalador do VB-CABLE costuma tornar o cabo o dispositivo padrão do Windows; usá-lo
+        como microfone criaria um loop, e como monitor deixaria o usuário sem ouvir nada.
+        """
+        dev = self.default_device(hostapi, kind)
+        if dev is not None and not dev.is_virtual:
+            return dev
+        if kind == "input":
+            return self.best_input([hostapi])
+        outs = [d for d in self.outputs(hostapi) if not d.is_virtual]
+        return outs[0] if outs else None
+
+    def default_is_virtual(self, hostapi: str, kind: str) -> bool:
+        dev = self.default_device(hostapi, kind)
+        return bool(dev and dev.is_virtual)
 
     def best_input(self, hostapis: list[str]) -> DeviceInfo | None:
         """Melhor microfone físico disponível entre as APIs dadas (fallback quando falta na API escolhida)."""
