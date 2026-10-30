@@ -5,7 +5,7 @@ import logging
 import sys
 from pathlib import Path
 
-from utils.paths import APP_NAME, is_frozen
+from utils.paths import APP_NAME, LEGACY_APP_NAME, is_frozen
 
 log = logging.getLogger(__name__)
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
@@ -27,6 +27,10 @@ def set_autostart(enabled: bool) -> bool:
 
     try:
         with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            try:
+                winreg.DeleteValue(key, LEGACY_APP_NAME)
+            except FileNotFoundError:
+                pass
             if enabled:
                 winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, _command())
             else:

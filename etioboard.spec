@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
-# Build:  pyinstaller VoiceStudio.spec --noconfirm
-# Saída:  dist/VoiceStudio/VoiceStudio.exe  (modo "onedir": inicia rápido, ideal para áudio)
+# Build:  pyinstaller etioboard.spec --noconfirm
+# Saída:  dist/etioboard/etioboard.exe  (modo "onedir": inicia rápido, ideal para áudio)
 
 block_cipher = None
 
@@ -31,7 +31,7 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name="VoiceStudio",
+    name="etioboard",
     icon="assets/icons/app.ico",
     console=False,
     debug=False,
@@ -47,5 +47,5 @@ coll = COLLECT(
     a.datas,
     strip=False,
     upx=False,
-    name="VoiceStudio",
+    name="etioboard",
 )

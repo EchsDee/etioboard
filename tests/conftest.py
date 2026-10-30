@@ -12,7 +12,7 @@ sys.path.insert(0, str(ROOT))
 @pytest.fixture()
 def data_dir(tmp_path, monkeypatch):
     d = tmp_path / "appdata"
-    monkeypatch.setenv("VOICESTUDIO_DATA", str(d))
+    monkeypatch.setenv("ETIOBOARD_DATA", str(d))
     return d
 
 

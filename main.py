@@ -1,4 +1,4 @@
-"""Voice Studio — modificador de voz em tempo real e soundboard para Windows."""
+"""etioboard — modificador de voz em tempo real e soundboard para Windows."""
 from __future__ import annotations
 
 import argparse
@@ -11,9 +11,9 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from utils.logging_setup import setup_logging
-from utils.paths import APP_DISPLAY_NAME, APP_NAME, app_data_dir
+from utils.paths import APP_DISPLAY_NAME, APP_NAME, app_data_dir, migrate_legacy_data
 
-log = logging.getLogger("voicestudio")
+log = logging.getLogger("etioboard")
 SERVER_NAME = f"{APP_NAME}-single-instance"
 
 
@@ -36,14 +36,20 @@ def main() -> int:
     parser.add_argument("--restart", action="store_true", help=argparse.SUPPRESS)
     args, _ = parser.parse_known_args()
 
+    try:
+        migrated = migrate_legacy_data()
+    except Exception:  # noqa: BLE001 - nunca impedir o app de abrir por causa da migração
+        migrated = False
     setup_logging()
+    if migrated:
+        log.info("Dados do Voice Studio copiados para a pasta do etioboard")
     # A thread de DSP disputa o GIL com a interface; trocas mais frequentes reduzem o tempo
     # máximo de espera do DSP (o padrão de 5 ms é quase um bloco de áudio inteiro).
     sys.setswitchinterval(0.001)
     if sys.platform == "win32":
         import ctypes
 
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("VoiceStudio.App")
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("Etioboard.App")
 
     QApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv)

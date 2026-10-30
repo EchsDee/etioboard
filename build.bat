@@ -1,5 +1,5 @@
 @echo off
-REM Gera o executável Windows em dist\VoiceStudio\VoiceStudio.exe
+REM Gera o executável Windows em dist\etioboard\etioboard.exe
 setlocal
 cd /d "%~dp0"
 
@@ -20,10 +20,10 @@ echo Gerando icone...
 python tools\make_icon.py || goto :error
 
 echo Empacotando com PyInstaller...
-pyinstaller VoiceStudio.spec --noconfirm --clean || goto :error
+pyinstaller etioboard.spec --noconfirm --clean || goto :error
 
 echo.
-echo Pronto! Executavel: dist\VoiceStudio\VoiceStudio.exe
+echo Pronto! Executavel: dist\etioboard\etioboard.exe
 exit /b 0
 
 :error

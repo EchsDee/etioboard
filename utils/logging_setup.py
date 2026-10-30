@@ -16,7 +16,7 @@ def setup_logging(level: int = logging.INFO) -> None:
     fmt = logging.Formatter("%(asctime)s %(levelname)-7s [%(threadName)s] %(name)s: %(message)s")
 
     file_handler = RotatingFileHandler(
-        logs_dir() / "voicestudio.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8"
+        logs_dir() / "etioboard.log", maxBytes=2_000_000, backupCount=3, encoding="utf-8"
     )
     file_handler.setFormatter(fmt)
     root.addHandler(file_handler)

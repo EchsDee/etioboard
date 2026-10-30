@@ -6,6 +6,7 @@ diretamente com o motor de áudio.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, Signal
@@ -50,6 +51,8 @@ class AppController(QObject):
     hotkeys_changed = Signal()
     notify = Signal(str, str)            # nível (info|success|warning|error), mensagem
     show_window_requested = Signal()
+    cable_install_progress = Signal(str, float)
+    cable_install_finished = Signal(bool, str)
 
     _hotkey_fired = Signal(str)
     _status_bg = Signal(object)
@@ -102,6 +105,8 @@ class AppController(QObject):
             self._activate(preset, announce=False)
 
     def start(self) -> None:
+        if self.settings.get("system.start_with_windows"):
+            autostart.set_autostart(True)  # atualiza o caminho (app movido/renomeado)
         self.engine.start(self.engine_config())
         self.hotkeys.start()
         self.register_all_hotkeys()
@@ -509,6 +514,44 @@ class AppController(QObject):
             self.cycle_preset(-1)
         elif ident == "stop_all":
             self.stop_all()
+
+    # ================================================================ cabo virtual
+    @property
+    def virtual_cable_installed(self) -> bool:
+        return self.devices.virtual_driver_installed()
+
+    def install_virtual_cable(self) -> None:
+        """Baixa e executa o instalador oficial do VB-CABLE em segundo plano."""
+        if getattr(self, "_cable_thread", None) and self._cable_thread.is_alive():
+            return
+        from audio.virtual_cable_installer import InstallError, install_vb_cable
+
+        def work():
+            try:
+                install_vb_cable(lambda text, frac: self.cable_install_progress.emit(text, frac))
+            except InstallError as exc:
+                self.cable_install_finished.emit(False, str(exc))
+                return
+            except Exception as exc:  # noqa: BLE001
+                log.exception("Falha na instalação do VB-CABLE")
+                self.cable_install_finished.emit(False, f"Erro inesperado: {exc}")
+                return
+            self.cable_install_progress.emit("Procurando o novo dispositivo…", 1.0)
+            self.settings.set("audio.virtual_device", None)   # volta para detecção automática
+            self.settings.set("audio.virtual_enabled", True)
+            done = threading.Event()
+            self.engine.refresh_devices(done.set)
+            done.wait(20)
+            if self.devices.virtual_driver_installed():
+                self.cable_install_finished.emit(
+                    True, "VB-CABLE instalado! No Discord/jogo, escolha “CABLE Output” como microfone.")
+            else:
+                self.cable_install_finished.emit(
+                    False, "O instalador terminou, mas o dispositivo ainda não apareceu. Se a instalação foi "
+                           "concluída, reinicie o Windows e abra o etioboard novamente.")
+
+        self._cable_thread = threading.Thread(target=work, name="vbcable-install", daemon=True)
+        self._cable_thread.start()
 
     # ================================================================ sistema
     def set_autostart(self, enabled: bool) -> None:

@@ -1,4 +1,4 @@
-# Voice Studio
+# etioboard
 
 Modificador de voz em tempo real e soundboard para Windows, em Python + PySide6 (app desktop nativo).
 
@@ -9,7 +9,7 @@ Microfone físico → Captura → Efeitos de voz → Mixer (+ Soundboard) → Sa
 
 ## Executar
 
-**Executável:** `dist\VoiceStudio\VoiceStudio.exe` (gerado por `build.bat`).
+**Executável:** `dist\etioboard\etioboard.exe` (gerado por `build.bat`).
 
 **A partir do código-fonte** (Python 3.12+):
 
@@ -21,14 +21,21 @@ py -3 -m venv .venv
 
 ## Usar como microfone no Discord/jogos
 
-1. Instale o [VB-CABLE](https://vb-audio.com/Cable/) (gratuito) e reinicie o Windows se o instalador pedir.
-2. No Voice Studio, em **Configurações → Áudio**, clique em *Atualizar dispositivos*. Em *Dispositivo virtual*
-   deixe "Detectar automaticamente" ou escolha **CABLE Input**, e clique em *Aplicar e reiniciar áudio*.
-3. No Discord (ou no jogo), selecione **CABLE Output** como microfone.
+O Windows só mostra como microfone os dispositivos criados por um **driver de áudio**. Nenhum app comum consegue
+criar um sozinho, nem colocar som "dentro" do microfone físico (injetar áudio no processo do Discord ou do jogo é
+detectado por anti-cheats). Por isso o etioboard usa o VB-CABLE, um cabo virtual gratuito, e cuida da instalação:
 
-O app detecta VB-CABLE, VB-CABLE A/B, Hi-Fi Cable, Voicemeeter (Input/AUX) e Virtual Audio Cable. Se nenhum
-estiver instalado, mostra um aviso com o link de instalação. Sem cabo virtual, o app continua funcionando, mas só
-toca no monitor.
+1. Em **Configurações**, clique em **Instalar VB-CABLE**. Na primeira execução, o app também oferece isso.
+   O instalador oficial é baixado do site da VB-Audio, e a assinatura digital é conferida antes de abri-lo.
+2. Confirme a permissão do Windows (UAC) e clique em **Install Driver**.
+3. O etioboard detecta o cabo e passa a enviar o áudio para ele automaticamente.
+4. No Discord ou no jogo, escolha **CABLE Output** como microfone.
+
+O app também detecta VB-CABLE A/B, Hi-Fi Cable, Voicemeeter e Virtual Audio Cable. Sem cabo virtual, o app
+continua funcionando, mas só toca no monitor.
+
+**Migração do nome antigo:** os dados de `%APPDATA%\VoiceStudio` são copiados para `%APPDATA%\etioboard` na
+primeira execução. A pasta antiga fica intacta como backup.
 
 ## Funcionalidades
 
@@ -53,8 +60,8 @@ toca no monitor.
   anterior preset, parar tudo. Conflitos são detectados entre as funções do app e com outros programas.
 - **Sistema**: bandeja do sistema, iniciar com o Windows, iniciar minimizado, instância única, tema escuro/claro
   e cor de destaque.
-- **Persistência**: SQLite em `%APPDATA%\VoiceStudio\voicestudio.db`. Os sons são copiados para
-  `%APPDATA%\VoiceStudio\sounds` e os logs ficam em `%APPDATA%\VoiceStudio\logs`. As configurações podem ser
+- **Persistência**: SQLite em `%APPDATA%\etioboard\etioboard.db`. Os sons são copiados para
+  `%APPDATA%\etioboard\sounds` e os logs ficam em `%APPDATA%\etioboard\logs`. As configurações podem ser
   exportadas e importadas em JSON.
 
 ## Arquitetura
@@ -95,8 +102,8 @@ toca no monitor.
 
 ```bat
 .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest tests -q      :: 66 testes
-build.bat                                     :: testes + ícone + PyInstaller → dist\VoiceStudio\
+.venv\Scripts\python -m pytest tests -q      :: 70 testes
+build.bat                                     :: testes + ícone + PyInstaller → dist\etioboard\
 ```
 
 ## Dicas de latência

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMessageBox,
+    QProgressBar,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -80,18 +81,32 @@ class SettingsPage(QWidget):
         bt.addWidget(label("Dispositivo de áudio virtual não encontrado", "H3"))
         bt.addWidget(label(
             "Para que Discord, jogos e outros apps recebam sua voz modificada e o soundboard como microfone, "
-            "instale um cabo de áudio virtual gratuito como o VB-CABLE. Depois de instalar, clique em "
-            "“Atualizar dispositivos”, selecione “CABLE Input” como saída virtual aqui e escolha "
-            "“CABLE Output” como microfone no Discord/jogo.", "Dim", wrap=True))
+            "o Windows exige um dispositivo de áudio virtual (um driver). O etioboard instala o VB-CABLE "
+            "gratuito para você: basta confirmar a permissão do Windows e clicar em “Install Driver”. "
+            "Depois, escolha “CABLE Output” como microfone no Discord/jogo.", "Dim", wrap=True))
         bb = QHBoxLayout()
-        get = button("Baixar VB-CABLE", "external", accent=True)
-        get.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(VB_CABLE_URL)))
-        bb.addWidget(get)
+        self.install_btn = button("Instalar VB-CABLE", "upload", accent=True)
+        self.install_btn.clicked.connect(self._install_cable)
+        bb.addWidget(self.install_btn)
+        site = button("Site oficial", "external")
+        site.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(VB_CABLE_URL)))
+        bb.addWidget(site)
         refresh = button("Atualizar dispositivos", "refresh")
         refresh.clicked.connect(self._refresh_devices)
         bb.addWidget(refresh)
         bb.addStretch(1)
         bt.addLayout(bb)
+        self.install_status = label("", "Faint", wrap=True)
+        self.install_status.hide()
+        bt.addWidget(self.install_status)
+        self.install_bar = QProgressBar()
+        self.install_bar.setRange(0, 100)
+        self.install_bar.setTextVisible(False)
+        self.install_bar.setFixedHeight(6)
+        self.install_bar.hide()
+        bt.addWidget(self.install_bar)
+        ctl.cable_install_progress.connect(self._install_progress)
+        ctl.cable_install_finished.connect(self._install_finished)
         bh.addLayout(bt, 1)
         self.banner.body.addLayout(bh)
         col.addWidget(self.banner)
@@ -346,6 +361,24 @@ class SettingsPage(QWidget):
         self.ctl.restart_audio()
         self.ctl.notify.emit("info", "Reiniciando áudio com as novas configurações…")
 
+    def _install_cable(self) -> None:
+        self.install_btn.setEnabled(False)
+        self.ctl.install_virtual_cable()
+
+    def _install_progress(self, text: str, frac: float) -> None:
+        self.install_status.setText(text)
+        self.install_status.show()
+        self.install_bar.setValue(int(frac * 100))
+        self.install_bar.show()
+
+    def _install_finished(self, ok: bool, message: str) -> None:
+        self.install_btn.setEnabled(True)
+        self.install_bar.hide()
+        self.install_status.setText(message)
+        self.install_status.show()
+        self.load_audio_settings()
+        self.ctl.notify.emit("success" if ok else "warning", message)
+
     def _refresh_devices(self) -> None:
         self.ctl.notify.emit("info", "Procurando dispositivos…")
         self.ctl.refresh_devices(done=lambda: QTimer.singleShot(0, self, self._after_refresh))
@@ -391,7 +424,7 @@ class SettingsPage(QWidget):
         self.theme_changed.emit()
 
     def _export(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Exportar configurações", "voicestudio-config.json",
+        path, _ = QFileDialog.getSaveFileName(self, "Exportar configurações", "etioboard-config.json",
                                               "JSON (*.json)")
         if path:
             self.ctl.settings.export_json(path)

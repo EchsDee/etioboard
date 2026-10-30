@@ -13,7 +13,7 @@ from PySide6.QtWidgets import QApplication, QSizePolicy, QWidget
 from soundboard.library import Snippet
 from ui import icons, theme
 
-MIME_SNIPPET = "application/x-voicestudio-snippet"
+MIME_SNIPPET = "application/x-etioboard-snippet"
 
 
 class SnippetButton(QWidget):

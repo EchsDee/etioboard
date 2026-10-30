@@ -201,6 +201,7 @@ class MainWindow(QMainWindow):
 
         self.chip_out = QFrame()
         self.chip_out.setObjectName("Chip")
+        self.chip_out.installEventFilter(self)  # clique: abre Configurações quando falta o cabo virtual
         co = QHBoxLayout(self.chip_out)
         co.setContentsMargins(10, 4, 12, 4)
         co.setSpacing(8)
@@ -241,7 +242,7 @@ class MainWindow(QMainWindow):
         self.tray = QSystemTrayIcon(icons.app_icon(), self)
         self.tray.setToolTip(APP_DISPLAY_NAME)
         menu = QMenu()
-        menu.addAction("Abrir Voice Studio", self.show_normal)
+        menu.addAction(f"Abrir {APP_DISPLAY_NAME}", self.show_normal)
         menu.addSeparator()
         self.tray_mute = QAction("Microfone mutado", menu, checkable=True)
         self.tray_mute.triggered.connect(self.ctl.set_muted)
@@ -276,7 +277,34 @@ class MainWindow(QMainWindow):
         if hasattr(page, "tick"):
             page.tick(levels)
 
+    def eventFilter(self, obj, event) -> bool:
+        if obj is getattr(self, "chip_out", None) and event.type() == event.Type.MouseButtonPress:
+            if not self.ctl.status.virtual_name:
+                self.go(4)
+            return True
+        return super().eventFilter(obj, event)
+
+    def _maybe_offer_cable(self, st) -> None:
+        """Na primeira execução sem cabo virtual, oferece a instalação (uma única vez)."""
+        if (st.state not in ("running", "degraded") or not st.virtual_missing or not self.isVisible()
+                or self.ctl.settings.get("ui.cable_prompt_shown") or self.ctl.virtual_cable_installed):
+            return
+        self.ctl.settings.set("ui.cable_prompt_shown", True)
+        box = QMessageBox(self)
+        box.setWindowTitle("Usar o etioboard como microfone")
+        box.setText("Para o Discord e os jogos ouvirem sua voz modificada e o soundboard, o Windows precisa de "
+                    "um dispositivo de áudio virtual.")
+        box.setInformativeText("O etioboard pode baixar e abrir o instalador oficial do VB-CABLE (gratuito). "
+                               "Você só precisa confirmar a permissão do Windows e clicar em “Install Driver”.")
+        install = box.addButton("Instalar agora", QMessageBox.AcceptRole)
+        box.addButton("Depois", QMessageBox.RejectRole)
+        box.exec()
+        if box.clickedButton() is install:
+            self.go(4)
+            self.settings_page._install_cable()
+
     def _on_status(self, st) -> None:
+        QTimer.singleShot(800, lambda: self._maybe_offer_cable(self.ctl.status))
         color = STATE_COLORS.get(st.state, "#64748B")
         text = STATE_TEXT.get(st.state, st.state)
         p = theme.current()
@@ -297,8 +325,9 @@ class MainWindow(QMainWindow):
             self.chip_out_text.setText(self._short(st.virtual_name))
             self.chip_out_text.setStyleSheet(f"color: {p.text_dim};")
         else:
-            self.chip_out_text.setText("Saída virtual ausente")
+            self.chip_out_text.setText("Sem saída virtual · instalar")
             self.chip_out_text.setStyleSheet("color: #F59E0B;")
+            self.chip_out.setCursor(Qt.PointingHandCursor)
         self.chip_out.setToolTip(f"Saída virtual: {st.virtual_name or 'não encontrada (instale o VB-CABLE)'}\n"
                                  f"Monitor: {st.monitor_name or 'desativado'}")
         if st.state == "error" and not self.isVisible():
@@ -338,7 +367,7 @@ class MainWindow(QMainWindow):
         QApplication.instance().setStyleSheet(theme.stylesheet(theme.current()))
         box = QMessageBox(self)
         box.setWindowTitle("Tema alterado")
-        box.setText("O tema foi aplicado. Reinicie o Voice Studio para atualizar também os ícones.")
+        box.setText(f"O tema foi aplicado. Reinicie o {APP_DISPLAY_NAME} para atualizar também os ícones.")
         restart = box.addButton("Reiniciar agora", QMessageBox.AcceptRole)
         box.addButton("Depois", QMessageBox.RejectRole)
         box.exec()
@@ -386,7 +415,7 @@ class MainWindow(QMainWindow):
             e.ignore()
             self.hide()
             if not self.ctl.settings.get("ui.tray_hint_shown"):
-                self.tray.showMessage(APP_DISPLAY_NAME, "O Voice Studio continua rodando na bandeja do sistema.",
+                self.tray.showMessage(APP_DISPLAY_NAME, f"O {APP_DISPLAY_NAME} continua rodando na bandeja do sistema.",
                                       QSystemTrayIcon.Information, 3000)
                 self.ctl.settings.set("ui.tray_hint_shown", True)
             return
