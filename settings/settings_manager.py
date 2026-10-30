@@ -35,6 +35,18 @@ DEFAULTS: dict[str, Any] = {
     "mixer.monitor_volume": 0.7,
     "mixer.monitor_voice": False,
     "mixer.monitor_soundboard": True,
+    "mixer.music_volume": 0.8,
+    "mixer.music_to_virtual": False,
+    "voice.effect_order": None,
+    # Auto-Tune Studio
+    "autotune.enabled": False,
+    "autotune.params": None,
+    "autotune.key": 0,
+    "autotune.scale": "chromatic",
+    "autotune.source": "realtime",
+    "autotune.song_mode": "chord",
+    "autotune.preset_id": None,
+    "autotune.song_id": None,
     # Voz
     "voice.enabled": True,
     "voice.active_preset_id": None,

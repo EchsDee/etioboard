@@ -64,6 +64,44 @@ primeira execução. A pasta antiga fica intacta como backup.
   `%APPDATA%\etioboard\sounds` e os logs ficam em `%APPDATA%\etioboard\logs`. As configurações podem ser
   exportadas e importadas em JSON.
 
+## Auto-Tune Studio
+
+Correção de afinação em tempo real, integrada à cadeia de voz:
+
+```
+Microfone → Noise Gate → Auto-Tune → Pitch/Formant → EQ/Compressor → efeitos → Mixer → Saída virtual
+```
+
+A ordem é configurável no Voice Changer, pelo botão de ordem de processamento.
+
+- **Tempo real**: corrige para a nota mais próxima da tonalidade e da escala escolhidas. São 12 tonalidades e 8
+  escalas: Chromatic, Major, Minor, Harmonic/Melodic Minor, Pentatonic Major/Minor e Blues. A tonalidade também
+  pode ser detectada cantando por cerca de 8 s.
+- **Controles**: Correction Amount, Retune Speed, Humanize (preserva o vibrato), Flex Tune, Formant Preservation
+  e Reference Pitch (A4).
+- **Song Mode**: importe uma música ou instrumental (WAV/MP3/OGG/FLAC). Em segundo plano, num processo separado,
+  o app identifica BPM e batidas, tonalidade e mudanças de tonalidade, escala, acordes por trecho (com as notas do
+  acorde e da tonalidade), estrutura (seções) e uma melodia de referência estimada.
+  - **Sincronia**: a correção acompanha a posição da reprodução, por timestamp e com compensação da latência dos
+    dispositivos, nos modos **Scale**, **Chord** (prioriza notas do acorde) e **Melody** (segue a melodia de
+    referência).
+  - **Edição**: no piano roll você corrige a tonalidade, os acordes e as notas de referência, ou importa um MIDI.
+- **Separação**: a música toca só no monitor. Enviá-la ao microfone virtual é opcional (há uma caixa de seleção
+  no Song Mode e no Mixer).
+- **Presets**: Natural Correction, Light, Hard, Robotic, Pop, Trap e R&B Vocal, além dos seus. Um preset pode
+  ser vinculado a uma música.
+
+**Algoritmos:**
+
+- **Detecção de F0**: YIN vetorizado por FFT, cerca de 0,05 ms por bloco. Não usei pYIN/CREPE: o pYIN só ajuda
+  na análise offline, e o CREPE exige uma rede neural pesada demais para tempo real.
+- **Correção**: TD-PSOLA síncrono ao período. A reconstrução é exata com razão 1, as formantes são preservadas,
+  e a latência é de cerca de 27 ms.
+- **Análise**: transcrição aproximada por NMF com dicionário harmônico (croma sem harmônicos e croma do baixo).
+  Sobre ela rodam perfis de Krumhansl-Kessler com Viterbi (tonalidade/modulações), templates de acordes com
+  Viterbi, rastreamento de batidas por programação dinâmica, novidade na matriz de auto-similaridade (seções) e
+  saliência harmônica com Viterbi (melodia).
+
 ## Arquitetura
 
 | Módulo | Responsabilidade |
@@ -75,7 +113,9 @@ primeira execução. A pasta antiga fica intacta como backup.
 | `audio/audio_mixer.py` | Mixagem da saída virtual e do monitor, com limitador suave |
 | `audio/audio_loader.py` | Decodificação (libsndfile), reamostragem e cache LRU assíncrono |
 | `audio/ring_buffer.py` | Buffers entre os callbacks e o DSP |
-| `effects/` | Os 10 efeitos (NumPy/SciPy, vetorizados por bloco) |
+| `effects/` | Os 10 efeitos (NumPy/SciPy, vetorizados por bloco) e a cadeia com ordem configurável |
+| `autotune/` | YIN, TD-PSOLA, corretor, teoria musical, mapa da música, análise, MIDI e persistência |
+| `audio/song_player.py` | Reprodução da música do Song Mode (posição com precisão de amostra) |
 | `soundboard/library.py` | Snippets e categorias (SQLite + pasta de arquivos) |
 | `presets/` | Presets incluídos e CRUD |
 | `hotkeys/` | `RegisterHotKey` do Win32 numa thread com laço de mensagens próprio |
@@ -102,7 +142,7 @@ primeira execução. A pasta antiga fica intacta como backup.
 
 ```bat
 .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest tests -q      :: 70 testes
+.venv\Scripts\python -m pytest tests -q      :: 96 testes
 build.bat                                     :: testes + ícone + PyInstaller → dist\etioboard\
 ```
 

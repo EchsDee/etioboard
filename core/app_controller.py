@@ -33,6 +33,8 @@ GLOBAL_ACTIONS: dict[str, str] = {
     "prev_preset": "Preset de voz anterior",
     "stop_all": "Interromper todos os sons",
     "toggle_playback": "Ativar / desativar playback (ouvir minha voz)",
+    "toggle_autotune": "Ativar / desativar Auto-Tune",
+    "song_play_pause": "Música do Song Mode: tocar / pausar",
 }
 
 TEST_PLAYBACK_ID = -1  # id reservado no soundboard para a gravação de teste
@@ -77,6 +79,9 @@ class AppController(QObject):
 
         self.devices = DeviceManager()
         self.engine = AudioEngine(self.devices)
+        from core.autotune_controller import AutoTuneController
+
+        self.autotune = AutoTuneController(self)
         self.hotkeys = GlobalHotkeyManager(self._hotkey_fired.emit)
 
         self._hotkey_fired.connect(self._on_hotkey)
@@ -125,6 +130,7 @@ class AppController(QObject):
         self._flush_timer.stop()
         try:
             self.hotkeys.stop()
+            self.autotune.shutdown()
         finally:
             self.engine.shutdown()
             self.settings.flush()
@@ -158,6 +164,8 @@ class AppController(QObject):
         return self.engine.status
 
     def _on_status(self, status: EngineStatus) -> None:
+        if status.state in ("running", "degraded"):
+            self.autotune.reload_song_audio_if_needed()
         self.engine_status.emit(status)
 
     # ================================================================ voz
@@ -321,6 +329,8 @@ class AppController(QObject):
             mixer.set_volumes(master=value)
         elif key == "mixer.monitor_volume":
             mixer.set_volumes(monitor=value)
+        elif key == "mixer.music_volume":
+            mixer.set_music(volume=value)
         self.mixer_changed.emit()
 
     def set_monitor_sources(self, voice: bool | None = None, soundboard: bool | None = None) -> None:
@@ -587,6 +597,11 @@ class AppController(QObject):
             self.stop_all()
         elif ident == "toggle_playback":
             self.toggle_playback()
+        elif ident == "toggle_autotune":
+            self.autotune.toggle()
+        elif ident == "song_play_pause":
+            at = self.autotune
+            at.pause() if at.transport()[2] else at.play()
 
     # ================================================================ cabo virtual
     @property

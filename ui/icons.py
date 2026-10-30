@@ -35,6 +35,9 @@ _PATHS: dict[str, str] = {
               '<path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
     "play": '<polygon points="6 3 20 12 6 21 6 3"/>',
     "stop": '<rect x="5" y="5" width="14" height="14" rx="2"/>',
+    "pause": '<rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/>',
+    "tune": '<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>'
+            '<path d="M2 9h4"/><path d="M2 13h3"/>',
     "stop-all": '<circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="6" height="6" rx="1"/>',
     "plus": '<path d="M5 12h14"/><path d="M12 5v14"/>',
     "trash": '<path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/>'

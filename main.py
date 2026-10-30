@@ -31,10 +31,27 @@ def _activate_running_instance() -> bool:
 
 
 def main() -> int:
+    import multiprocessing
+
+    multiprocessing.freeze_support()  # análise de músicas roda em processo separado (também no .exe)
     parser = argparse.ArgumentParser()
     parser.add_argument("--minimized", action="store_true", help="iniciar na bandeja do sistema")
     parser.add_argument("--restart", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--selftest-analysis", metavar="ARQUIVO", help=argparse.SUPPRESS)
     args, _ = parser.parse_known_args()
+
+    if args.selftest_analysis:
+        # Diagnóstico: roda a análise de música pelo mesmo caminho do app (processo separado).
+        import json
+        from concurrent.futures import ProcessPoolExecutor
+
+        from autotune.song_analysis import analyze
+
+        with ProcessPoolExecutor(1, mp_context=multiprocessing.get_context("spawn")) as pool:
+            a = pool.submit(analyze, args.selftest_analysis).result(timeout=300)
+        summary = {"bpm": a["bpm"], "key": a["key"]["name"], "chords": len(a["chords"])}
+        (app_data_dir() / "selftest.json").write_text(json.dumps(summary), encoding="utf-8")
+        return 0
 
     try:
         migrated = migrate_legacy_data()

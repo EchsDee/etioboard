@@ -24,6 +24,7 @@ CHANNELS = [
     ("mixer.mic_volume", "Microfone", "mic", "input"),
     ("mixer.voice_volume", "Voz processada", "wave", "voice"),
     ("mixer.soundboard_volume", "Soundboard", "music", "soundboard"),
+    ("mixer.music_volume", "Música (Song Mode)", "tune", "music"),
     ("mixer.monitor_volume", "Monitor (fones)", "headphones", "monitor"),
     ("mixer.master_volume", "Saída geral", "cable", "output"),
 ]
@@ -141,6 +142,14 @@ class MixerPage(QWidget):
                                                       voice_toggle.setChecked(on),
                                                       voice_toggle.blockSignals(False)))
         self.strips[1].footer_lay.addWidget(voice_toggle)
+        music_virtual = QCheckBox("→ Mic virtual")
+        music_virtual.setToolTip("Enviar a música também para o microfone virtual (desligado: só você ouve).")
+        music_virtual.setChecked(bool(ctl.settings.get("mixer.music_to_virtual")))
+        music_virtual.toggled.connect(ctl.autotune.set_music_to_virtual)
+        ctl.mixer_changed.connect(lambda: (music_virtual.blockSignals(True),
+                                           music_virtual.setChecked(bool(ctl.settings.get("mixer.music_to_virtual"))),
+                                           music_virtual.blockSignals(False)))
+        self.strips[3].footer_lay.addWidget(music_virtual)
 
         # Roteamento do monitor
         routing = Card(padding=14)

@@ -7,7 +7,7 @@ import threading
 import numpy as np
 
 from effects.base import arange
-from effects.chain import EffectChain, default_state, normalize_state
+from effects.chain import EffectChain, default_state, normalize_order, normalize_state
 
 
 class SmoothedGain:
@@ -43,6 +43,11 @@ class VoiceProcessor:
         self._muted = False
         self._mic_gain = 1.0
         self.chain: EffectChain | None = None
+        self._order = normalize_order(None)
+        # Auto-Tune: estado independente dos presets de voz (sobrevive a reinícios do motor)
+        self._at_enabled = False
+        self._at_params: dict = {}
+        self._at_config: dict = {}
         self.mic = SmoothedGain(1.0)
         self.level_in = 0.0
         self.level_out = 0.0
@@ -50,8 +55,11 @@ class VoiceProcessor:
     # ----------------------------------------------------- ciclo de vida (motor)
     def prepare(self, samplerate: int, blocksize: int) -> None:
         with self._lock:
-            chain = EffectChain(samplerate, blocksize, self._state)
+            chain = EffectChain(samplerate, blocksize, self._state, self._order)
             chain.set_master(self._master)
+            chain.autotune.set_params(self._at_params)
+            chain.autotune.set_config(**self._at_config)
+            chain.autotune.set_enabled(self._at_enabled)
             self.chain = chain
             self.mic = SmoothedGain(0.0 if self._muted else self._mic_gain)
 
@@ -77,6 +85,36 @@ class VoiceProcessor:
             self._state[effect_id]["params"].update(params)
             if self.chain:
                 self.chain.set_effect_params(effect_id, params)
+
+    # ----------------------------------------------------- ordem / auto-tune
+    def set_order(self, order: list[str] | None) -> None:
+        with self._lock:
+            self._order = normalize_order(order)
+            if self.chain:
+                self.chain.set_order(self._order)
+
+    def order(self) -> list[str]:
+        return list(self._order)
+
+    @property
+    def autotune(self):
+        chain = self.chain
+        return chain.autotune if chain else None
+
+    def set_autotune_enabled(self, enabled: bool) -> None:
+        self._at_enabled = bool(enabled)
+        if self.autotune:
+            self.autotune.set_enabled(enabled)
+
+    def set_autotune_params(self, params: dict) -> None:
+        self._at_params.update(params)
+        if self.autotune:
+            self.autotune.set_params(params)
+
+    def set_autotune_config(self, **cfg) -> None:
+        self._at_config.update(cfg)
+        if self.autotune:
+            self.autotune.set_config(**cfg)
 
     def set_enabled(self, enabled: bool) -> None:
         with self._lock:

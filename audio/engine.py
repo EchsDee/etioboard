@@ -24,6 +24,7 @@ from audio.audio_loader import SampleCache
 from audio.audio_mixer import AudioMixer
 from audio.device_manager import DeviceInfo, DeviceManager
 from audio.ring_buffer import RingBuffer
+from audio.song_player import SongPlayer
 from audio.soundboard_player import SoundboardPlayer
 from audio.test_recorder import TestRecorder
 from audio.voice_processor import VoiceProcessor
@@ -114,6 +115,7 @@ class _Session:
         self.started_at = 0.0
         self.dsp_error: str | None = None
         self.dsp_load = 0.0
+        self.sync_offset_s = 0.0
 
     # ------------------------------------------------------------ abertura
     def open(self) -> EngineStatus:
@@ -211,6 +213,7 @@ class _Session:
         # --- prepara processadores com a taxa/bloco desta sessão
         self.engine.voice.prepare(sr, bs)
         self.engine.soundboard.set_samplerate(sr)
+        self.engine.song.set_samplerate(sr)
 
         self._thread = threading.Thread(target=self._dsp_loop, name="dsp", daemon=True)
         self._thread.start()
@@ -232,6 +235,11 @@ class _Session:
         st.virtual_name = next((o.device.name for o in self.outputs if o.kind == "virtual"), None)
         st.monitor_name = next((o.device.name for o in self.outputs if o.kind == "monitor"), None)
         st.latency_ms = self.estimate_latency_ms()
+        mon = next((o for o in self.outputs if o.kind == "monitor"), None)
+        self.sync_offset_s = (
+            (self.in_stream.latency if self.in_stream else 0.0)
+            + ((mon.stream.latency + mon.target_frames / sr) if mon and mon.stream else 0.0)
+        )
         st.state = "degraded" if (st.warnings or not self.in_stream) else "running"
         st.message = "Áudio em funcionamento" if st.state == "running" else "Áudio funcionando com avisos"
         return st
@@ -295,10 +303,19 @@ class _Session:
 
     def _render(self, mic: np.ndarray) -> None:
         eng = self.engine
+        music = eng.song.render(len(mic))
+        at = eng.voice.autotune
+        if at is not None:
+            # Sincronização por timestamp: a voz que chega agora responde ao que o usuário OUVIU,
+            # ou seja, à música de (latência de saída do monitor + latência de entrada) atrás.
+            if eng.song.playing or music is not None:
+                at.song_time = eng.song.block_start / self.cfg.samplerate - self.sync_offset_s
+            else:
+                at.song_time = None
         voice = eng.voice.process(mic)
         sb_main, sb_preview = eng.soundboard.render(len(mic))
         want_monitor = any(o.kind == "monitor" for o in self.outputs)
-        out, mon = eng.mixer.mix(voice, sb_main, sb_preview, want_monitor)
+        out, mon = eng.mixer.mix(voice, sb_main, sb_preview, want_monitor, music)
         eng.recorder.feed(out)
         for o in self.outputs:
             data = out if o.kind == "virtual" else mon
@@ -361,6 +378,7 @@ class AudioEngine:
         self.mixer = AudioMixer()
         self.cache = SampleCache()
         self.recorder = TestRecorder()
+        self.song = SongPlayer(48000)
         self.config = EngineConfig()
         self._status = EngineStatus()
         self._session: _Session | None = None
@@ -406,6 +424,7 @@ class AudioEngine:
         lv = dict(self.mixer.levels)
         lv["input"] = self.voice.level_in
         lv["processed"] = self.voice.level_out
+        lv["music"] = self.mixer.levels.get("music", 0.0)
         return lv
 
     def dsp_load(self) -> float:

@@ -9,7 +9,7 @@ from typing import Any, Iterable
 
 log = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS categories (
@@ -53,6 +53,29 @@ CREATE TABLE IF NOT EXISTS presets (
 CREATE TABLE IF NOT EXISTS hotkeys (
     action  TEXT PRIMARY KEY,
     hotkey  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS autotune_presets (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT NOT NULL,
+    data        TEXT NOT NULL,
+    builtin_key TEXT,
+    position    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS songs (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    name              TEXT NOT NULL,
+    file_path         TEXT NOT NULL,
+    original_filename TEXT NOT NULL DEFAULT '',
+    duration          REAL NOT NULL DEFAULT 0,
+    status            TEXT NOT NULL DEFAULT 'pending',
+    error             TEXT,
+    analysis          TEXT,
+    analysis_auto     TEXT,
+    preset_id         INTEGER REFERENCES autotune_presets(id) ON DELETE SET NULL,
+    correction_mode   TEXT NOT NULL DEFAULT 'chord',
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
 CREATE TABLE IF NOT EXISTS settings (

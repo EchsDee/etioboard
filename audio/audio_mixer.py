@@ -31,7 +31,11 @@ class AudioMixer:
         self.monitor_sb_gain = SmoothedGain(1.0)
         self.monitor_voice = False
         self.monitor_soundboard = True
-        self.levels = {"voice": 0.0, "soundboard": 0.0, "output": 0.0, "monitor": 0.0}
+        # Música de referência (Song Mode): sempre no monitor; no microfone virtual só se o usuário quiser.
+        self.music = SmoothedGain(0.8)
+        self.music_virtual_gain = SmoothedGain(0.0)
+        self.music_to_virtual = False
+        self.levels = {"voice": 0.0, "soundboard": 0.0, "output": 0.0, "monitor": 0.0, "music": 0.0}
 
     def set_volumes(self, voice=None, soundboard=None, master=None, monitor=None) -> None:
         if voice is not None:
@@ -43,6 +47,13 @@ class AudioMixer:
         if monitor is not None:
             self.monitor.set(monitor)
 
+    def set_music(self, volume: float | None = None, to_virtual: bool | None = None) -> None:
+        if volume is not None:
+            self.music.set(volume)
+        if to_virtual is not None:
+            self.music_to_virtual = bool(to_virtual)
+            self.music_virtual_gain.set(1.0 if to_virtual else 0.0)
+
     def set_monitor_sources(self, voice: bool | None = None, soundboard: bool | None = None) -> None:
         if voice is not None:
             self.monitor_voice = bool(voice)
@@ -52,12 +63,17 @@ class AudioMixer:
             self.monitor_sb_gain.set(1.0 if soundboard else 0.0)
 
     def mix(self, voice_mono: np.ndarray, sb_main: np.ndarray, sb_preview: np.ndarray,
-            want_monitor: bool) -> tuple[np.ndarray, np.ndarray | None]:
+            want_monitor: bool, music: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray | None]:
         voice = self.voice.apply(voice_mono.astype(np.float32, copy=False))
         voice_st = np.repeat(voice[:, None], 2, axis=1)
         sb = self.soundboard.apply(sb_main)
+        mus = self.music.apply(music) if music is not None else None
+        self.levels["music"] = float(np.max(np.abs(mus))) if mus is not None and mus.size else 0.0
 
-        out = self.master.apply(voice_st + sb)
+        to_virtual = voice_st + sb
+        if mus is not None and (self.music_to_virtual or self.music_virtual_gain.current > 0):
+            to_virtual = to_virtual + self.music_virtual_gain.apply(mus)
+        out = self.master.apply(to_virtual)
         out = soft_limit(out)
         self.levels["voice"] = float(np.max(np.abs(voice))) if voice.size else 0.0
         self.levels["soundboard"] = float(np.max(np.abs(sb))) if sb.size else 0.0
@@ -66,6 +82,8 @@ class AudioMixer:
         mon = None
         if want_monitor:
             mon = self.monitor_voice_gain.apply(voice_st) + self.monitor_sb_gain.apply(sb) + sb_preview
+            if mus is not None:
+                mon = mon + mus
             mon = soft_limit(self.monitor.apply(mon))
             self.levels["monitor"] = float(np.max(np.abs(mon))) if mon.size else 0.0
         return out.astype(np.float32, copy=False), mon

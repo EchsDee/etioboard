@@ -44,6 +44,27 @@ DISPLAY_ORDER: tuple[type[Effect], ...] = (
 
 EFFECT_CLASSES: dict[str, type[Effect]] = {cls.effect_id: cls for cls in PROCESSING_ORDER}
 
+AUTOTUNE_ID = "autotune"
+#: Ordem padrão: Gate → Auto-Tune → pitch/formantes → dinâmica/EQ → efeitos criativos → ambiência.
+DEFAULT_ORDER: tuple[str, ...] = (
+    "noise_gate", AUTOTUNE_ID, "pitch_shift", "formant_shift", "equalizer", "compressor",
+    "robot", "distortion", "chorus", "echo", "reverb",
+)
+
+
+def normalize_order(order: list[str] | None) -> list[str]:
+    """Garante que a ordem contenha cada processador exatamente uma vez."""
+    valid = list(DEFAULT_ORDER)
+    result = [e for e in (order or []) if e in valid]
+    result = list(dict.fromkeys(result))
+    for e in valid:  # processadores ausentes entram na posição padrão relativa
+        if e not in result:
+            idx = valid.index(e)
+            before = [x for x in valid[:idx] if x in result]
+            pos = result.index(before[-1]) + 1 if before else 0
+            result.insert(pos, e)
+    return result
+
 
 def default_state() -> dict:
     """Estado neutro: todos os efeitos desligados com parâmetros padrão."""
@@ -68,11 +89,17 @@ def normalize_state(state: dict | None) -> dict:
 
 
 class EffectChain:
-    def __init__(self, samplerate: int, blocksize: int, state: dict | None = None):
+    def __init__(self, samplerate: int, blocksize: int, state: dict | None = None,
+                 order: list[str] | None = None):
+        from autotune.corrector import AutoTune
+
         self.samplerate = samplerate
         self.blocksize = blocksize
-        self.effects: list[Effect] = [cls(samplerate, blocksize) for cls in PROCESSING_ORDER]
-        self.by_id = {e.effect_id: e for e in self.effects}
+        self.by_id: dict[str, Effect] = {cls.effect_id: cls(samplerate, blocksize) for cls in PROCESSING_ORDER}
+        self.autotune = AutoTune(samplerate, blocksize)
+        self.by_id[AUTOTUNE_ID] = self.autotune
+        self.effects: list[Effect] = []
+        self.set_order(order)
         self._state = default_state()
         self._master = True
         self.apply_state(state or self._state)
@@ -102,6 +129,11 @@ class EffectChain:
         for eid, entry in self._state.items():
             self.by_id[eid].set_enabled(entry["enabled"] and self._master)
 
+    def set_order(self, order: list[str] | None) -> None:
+        # Troca atômica da lista: a thread de DSP sempre itera uma lista completa.
+        self.order = normalize_order(order)
+        self.effects = [self.by_id[e] for e in self.order]
+
     @property
     def master(self) -> bool:
         return self._master
@@ -111,6 +143,6 @@ class EffectChain:
 
     def process(self, x: np.ndarray) -> np.ndarray:
         y = x
-        for eff in self.effects:
+        for eff in self.effects:  # referência local: troca de ordem não afeta o bloco em andamento
             y = eff.process(y)
         return y

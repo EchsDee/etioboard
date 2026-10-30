@@ -130,6 +130,9 @@ class VoicePage(QWidget):
         save_as = button("Salvar como…", "copy")
         save_as.clicked.connect(self._save_as)
         row.addWidget(save_as)
+        order = button("", "sliders", tooltip="Ordem de processamento dos efeitos (inclui o Auto-Tune)")
+        order.clicked.connect(self._edit_order)
+        row.addWidget(order)
         bar.body.addLayout(row)
 
         # --- playback / teste de voz
@@ -221,6 +224,18 @@ class VoicePage(QWidget):
         self.modified.setVisible(modified)
         self.revert_btn.setEnabled(modified)
         self.save_btn.setEnabled(modified)
+
+    def _edit_order(self) -> None:
+        from effects.chain import EFFECT_CLASSES
+        from ui.dialogs.music_dialogs import EffectOrderDialog
+
+        names = {eid: cls.display_name for eid, cls in EFFECT_CLASSES.items()}
+        names["autotune"] = "Auto-Tune (correção de afinação)"
+        at = self.ctl.autotune
+        dlg = EffectOrderDialog(at.effect_order(), names, self)
+        if dlg.exec():
+            at.set_effect_order(dlg.order())
+            self.ctl.notify.emit("success", "Ordem dos efeitos atualizada")
 
     def _save_as(self) -> None:
         name, ok = QInputDialog.getText(self, "Salvar preset como", "Nome do novo preset:")

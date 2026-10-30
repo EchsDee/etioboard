@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from core.app_controller import AppController
 from ui import icons, theme
+from ui.pages.autotune_page import AutoTunePage
 from ui.pages.dashboard_page import DashboardPage
 from ui.pages.mixer_page import MixerPage
 from ui.pages.presets_page import PresetsPage
@@ -37,10 +38,13 @@ from utils.paths import APP_DISPLAY_NAME, APP_VERSION
 NAV = [
     ("Dashboard", "grid"),
     ("Voice Changer", "wave"),
+    ("Auto-Tune", "tune"),
     ("Presets", "layers"),
     ("Mixer", "sliders"),
     ("Configurações", "settings"),
 ]
+
+SETTINGS_PAGE = 5
 
 STATE_COLORS = {"running": "#22C55E", "degraded": "#F59E0B", "starting": "#3B82F6",
                 "error": "#EF4444", "stopped": "#64748B"}
@@ -152,10 +156,11 @@ class MainWindow(QMainWindow):
         self.pages = QStackedWidget()
         self.dashboard = DashboardPage(ctl)
         self.voice = VoicePage(ctl)
+        self.autotune_page = AutoTunePage(ctl)
         self.presets_page = PresetsPage(ctl)
         self.mixer = MixerPage(ctl)
         self.settings_page = SettingsPage(ctl)
-        for page in (self.dashboard, self.voice, self.presets_page, self.mixer, self.settings_page):
+        for page in (self.dashboard, self.voice, self.autotune_page, self.presets_page, self.mixer, self.settings_page):
             self.pages.addWidget(page)
         self.presets_page.edit_requested.connect(lambda: self.go(1))
         self.settings_page.theme_changed.connect(self.apply_theme)
@@ -292,7 +297,7 @@ class MainWindow(QMainWindow):
     def eventFilter(self, obj, event) -> bool:
         if obj is getattr(self, "chip_out", None) and event.type() == event.Type.MouseButtonPress:
             if not self.ctl.status.virtual_name:
-                self.go(4)
+                self.go(SETTINGS_PAGE)
             return True
         return super().eventFilter(obj, event)
 
@@ -312,7 +317,7 @@ class MainWindow(QMainWindow):
         box.addButton("Depois", QMessageBox.RejectRole)
         box.exec()
         if box.clickedButton() is install:
-            self.go(4)
+            self.go(SETTINGS_PAGE)
             self.settings_page._install_cable()
 
     def _on_status(self, st) -> None:
