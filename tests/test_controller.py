@@ -1,0 +1,93 @@
+"""Testes de integração do controlador (sem abrir dispositivos de áudio)."""
+import pytest
+
+from core.app_controller import AppController
+
+
+@pytest.fixture()
+def ctl(qapp, data_dir):
+    c = AppController(data_dir / "c.db")
+    c.hotkeys.start()
+    yield c
+    c.hotkeys.stop()
+    c.engine.shutdown()
+    c.settings.flush()
+    c.db.close()
+
+
+def test_first_run_seeds_data(ctl):
+    assert len(ctl.preset_list()) == 8
+    assert len(ctl.library.categories()) == 6
+    assert ctl.presets.get(ctl.active_preset_id).name == "Normal Voice"
+
+
+def test_preset_edit_modified_save_and_revert(ctl):
+    events = []
+    ctl.voice_modified_changed.connect(events.append)
+    ctl.set_effect_params("reverb", {"mix": 0.5})
+    ctl.set_effect_enabled("reverb", True)
+    assert ctl.voice_modified and events[-1] is True
+    ctl.revert_changes()
+    assert not ctl.voice_modified and ctl.voice_state()["reverb"]["enabled"] is False
+
+    ctl.set_effect_enabled("reverb", True)
+    ctl.save_active_preset()
+    assert not ctl.voice_modified
+    assert ctl.presets.get(ctl.active_preset_id).state["reverb"]["enabled"] is True
+
+
+def test_cycle_presets_and_delete_active(ctl):
+    first = ctl.active_preset_id
+    ctl.cycle_preset(1)
+    assert ctl.active_preset_id != first
+    ctl.cycle_preset(-1)
+    assert ctl.active_preset_id == first
+    new = ctl.create_preset("Teste", from_current=False)
+    assert ctl.active_preset_id == new
+    assert ctl.delete_preset(new)
+    assert ctl.active_preset_id is not None and ctl.active_preset_id != new
+
+
+def test_volume_mute_and_voice_toggle_reach_engine(ctl):
+    ctl.set_volume("mixer.master_volume", 0.5)
+    assert ctl.engine.mixer.master.target == 0.5
+    ctl.set_muted(True)
+    assert ctl.engine.voice.mic.target == 0.0
+    ctl.set_muted(False)
+    ctl.set_volume("mixer.mic_volume", 1.5)
+    assert ctl.engine.voice.mic.target == 1.5
+    ctl.set_voice_enabled(False)
+    assert ctl.engine.voice.chain is None or not ctl.engine.voice.chain.master
+    assert ctl.settings.get("voice.enabled") is False
+
+
+def test_hotkey_conflicts_between_owners(ctl, tone_file):
+    ok, _ = ctl.assign_hotkey("action:toggle_mute", "Ctrl+Alt+Shift+F20")
+    assert ok
+    cat = ctl.library.categories()[0].id
+    ctl.import_files([str(tone_file())], cat)
+    sid = ctl.library.snippets()[0].id
+    ok, err = ctl.assign_hotkey(f"snippet:{sid}", "ctrl+alt+shift+f20")
+    assert not ok and "Mutar" in err
+    ok, _ = ctl.assign_hotkey(f"snippet:{sid}", "Ctrl+Alt+Shift+F21")
+    assert ok and ctl.library.snippet(sid).hotkey == "Ctrl+Alt+Shift+F21"
+    assert set(ctl.hotkeys.registered()) >= {"action:toggle_mute", f"snippet:{sid}"}
+    ctl.assign_hotkey("action:toggle_mute", None)
+    assert "toggle_mute" not in ctl.action_hotkeys()
+
+
+def test_hotkey_dispatch(ctl):
+    muted = ctl.muted
+    ctl._on_hotkey("action:toggle_mute")
+    assert ctl.muted is (not muted)
+    before = ctl.active_preset_id
+    ctl._on_hotkey("action:next_preset")
+    assert ctl.active_preset_id != before
+
+
+def test_delete_snippet_unregisters_hotkey(ctl, tone_file):
+    ctl.import_files([str(tone_file())], None)
+    sid = ctl.library.snippets()[0].id
+    ctl.assign_hotkey(f"snippet:{sid}", "Ctrl+Alt+Shift+F22")
+    ctl.delete_snippet(sid)
+    assert f"snippet:{sid}" not in ctl.hotkeys.registered()
