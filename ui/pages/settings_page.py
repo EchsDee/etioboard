@@ -184,6 +184,23 @@ class SettingsPage(QWidget):
         self.copy_files.setChecked(bool(s.get("soundboard.copy_files", True)))
         self.copy_files.toggled.connect(lambda on: s.set("soundboard.copy_files", on))
         f2.addRow("Importação", self.copy_files)
+        self.normalize = QCheckBox("Normalizar o volume dos sons (recomendado)")
+        self.normalize.setToolTip("Mede o loudness de cada som (padrão LUFS) e ajusta todos para o mesmo nível, "
+                                  "próximo ao da voz. Assim 100% tem o mesmo volume percebido em qualquer som.")
+        self.normalize.setChecked(bool(s.get("soundboard.normalize", True)))
+        self.normalize.toggled.connect(self._normalize_toggled)
+        f2.addRow("Volume", self.normalize)
+        self.target_lufs = ParamSlider("Nível dos sons (mais baixo ← → mais alto)", -36, -12,
+                                       float(s.get("soundboard.target_lufs", -24.0)), 1, "LUFS", 0)
+        self.target_lufs.setToolTip("-24 LUFS fica próximo de uma voz falada normal. Diminua se os sons ainda "
+                                    "estiverem altos demais.")
+        self.target_lufs.setEnabled(self.normalize.isChecked())
+        self._lufs_timer = QTimer(self)
+        self._lufs_timer.setSingleShot(True)
+        self._lufs_timer.setInterval(400)
+        self._lufs_timer.timeout.connect(lambda: ctl.set_sound_normalization(target_lufs=self.target_lufs.value()))
+        self.target_lufs.valueChanged.connect(lambda _v: self._lufs_timer.start())
+        f2.addRow("", self.target_lufs)
         self.btn_size = ParamSlider("Tamanho dos botões", 90, 180, s.get("soundboard.button_size", 120), 1, "px", 0)
         self.btn_size.valueChanged.connect(self._button_size)
         f2.addRow("", self.btn_size)
@@ -411,6 +428,10 @@ class SettingsPage(QWidget):
         super().showEvent(e)
 
     # ------------------------------------------------------------------ outros
+    def _normalize_toggled(self, on: bool) -> None:
+        self.target_lufs.setEnabled(on)
+        self.ctl.set_sound_normalization(enabled=on)
+
     def _button_size(self, v: float) -> None:
         self.ctl.settings.set("soundboard.button_size", int(v))
         self.ctl.library_changed.emit()

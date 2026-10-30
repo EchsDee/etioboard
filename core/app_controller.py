@@ -112,6 +112,7 @@ class AppController(QObject):
             master=s.get("mixer.master_volume"), monitor=s.get("mixer.monitor_volume"),
         )
         eng.mixer.set_monitor_sources(s.get("mixer.monitor_voice"), s.get("mixer.monitor_soundboard"))
+        self._apply_normalization()
 
         preset = self.presets.get(s.get("voice.active_preset_id")) or self.presets.default()
         if preset:
@@ -408,6 +409,20 @@ class AppController(QObject):
         return self.engine.levels()
 
     # ================================================================ soundboard
+    def _apply_normalization(self) -> None:
+        s = self.settings
+        target = float(s.get("soundboard.target_lufs", -24.0)) if s.get("soundboard.normalize", True) else None
+        self.engine.cache.set_normalization(target)
+
+    def set_sound_normalization(self, enabled: bool | None = None, target_lufs: float | None = None) -> None:
+        """Liga/desliga a normalização de volume dos sons e/ou muda o nível-alvo (LUFS)."""
+        if enabled is not None:
+            self.settings.set("soundboard.normalize", bool(enabled))
+        if target_lufs is not None:
+            self.settings.set("soundboard.target_lufs", float(target_lufs))
+        self._apply_normalization()
+        self.preload_snippets()
+
     def preload_snippets(self) -> None:
         for s in self.library.snippets():
             if s.exists:

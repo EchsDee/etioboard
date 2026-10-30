@@ -145,3 +145,34 @@ def test_test_recorder_collects_and_delivers():
     assert got[0][0, 0] == 1 and got[0][300, 0] == 2 and not rec.active
     rec.feed(np.ones((256, 2), np.float32))  # depois de terminar, ignora
     assert len(got) == 1
+
+
+def test_loudness_measurement_and_normalization(tone_file):
+    from audio.loudness import integrated_loudness, normalization_gain
+
+    sr = 48000
+    t = np.arange(sr * 2) / sr
+    sine = np.sin(2 * np.pi * 997 * t)
+    # BS.1770: seno de 997 Hz a 0 dBFS num canal = -3,01 LUFS
+    assert integrated_loudness(np.stack([sine, np.zeros_like(sine)], axis=1), sr) == pytest.approx(-3.01, abs=0.6)
+    loud = np.stack([sine, sine], axis=1) * 0.9          # som "de meme": ~-1 LUFS
+    quiet = loud * 0.05                                  # ~-27 LUFS
+    for x in (loud, quiet):
+        g = normalization_gain(x, sr, -24.0)
+        assert integrated_loudness(x * g, sr) == pytest.approx(-24.0, abs=0.3)
+    silence = np.zeros((sr, 2))
+    assert normalization_gain(silence, sr, -24.0) == 1.0
+
+
+def test_cache_applies_normalization(tone_file):
+    from audio.loudness import integrated_loudness
+
+    path = str(tone_file(seconds=1.0, sr=48000))  # seno de 440 Hz com amplitude 0,3
+    cache = SampleCache()
+    cache.set_samplerate(48000)
+    raw = cache.request(path).result(timeout=5)
+    cache.set_normalization(-30.0)
+    norm = cache.request(path).result(timeout=5)
+    assert integrated_loudness(norm, 48000) == pytest.approx(-30.0, abs=0.5)
+    assert integrated_loudness(raw, 48000) > -15
+    cache.shutdown()

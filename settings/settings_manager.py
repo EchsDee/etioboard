@@ -54,6 +54,8 @@ DEFAULTS: dict[str, Any] = {
     # Soundboard
     "soundboard.playback_mode": "restart",  # restart | toggle | overlap
     "soundboard.copy_files": True,
+    "soundboard.normalize": True,
+    "soundboard.target_lufs": -24.0,
     "soundboard.button_size": 120,
     # Interface / sistema
     "ui.theme": "dark",

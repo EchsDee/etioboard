@@ -71,6 +71,8 @@ class SampleCache:
     def __init__(self, max_bytes: int = 768 * 1024 * 1024):
         self.max_bytes = max_bytes
         self.samplerate = 48000
+        #: loudness-alvo (LUFS) para normalizar os sons; None = volume original do arquivo
+        self.target_lufs: float | None = None
         self._items: OrderedDict[tuple, np.ndarray] = OrderedDict()
         self._bytes = 0
         self._lock = threading.Lock()
@@ -84,8 +86,15 @@ class SampleCache:
                 self._items.clear()
                 self._bytes = 0
 
+    def set_normalization(self, target_lufs: float | None) -> None:
+        with self._lock:
+            if target_lufs != self.target_lufs:
+                self.target_lufs = target_lufs
+                self._items.clear()
+                self._bytes = 0
+
     def _key(self, path: str) -> tuple:
-        return (str(path), self.samplerate)
+        return (str(path), self.samplerate, self.target_lufs)
 
     def get_cached(self, path: str) -> np.ndarray | None:
         key = self._key(path)
@@ -97,7 +106,7 @@ class SampleCache:
 
     def _store(self, key: tuple, data: np.ndarray) -> None:
         with self._lock:
-            if key[1] != self.samplerate:
+            if key[1] != self.samplerate or key[2] != self.target_lufs:
                 return
             if key in self._items:
                 return
@@ -135,6 +144,10 @@ class SampleCache:
     def _load(self, key: tuple) -> np.ndarray:
         try:
             data = load_audio(key[0], key[1])
+            if key[2] is not None:
+                from audio.loudness import normalization_gain
+
+                data *= np.float32(normalization_gain(data, key[1], key[2]))
             self._store(key, data)
             return data
         finally:
