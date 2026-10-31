@@ -40,9 +40,10 @@ def main() -> int:
     parser.add_argument("--publish", action="store_true", help="cria a release no GitHub com gh")
     parser.add_argument("--notes", default="", help="notas da versão")
     parser.add_argument("--notes-file", help="arquivo com as notas da versão")
+    parser.add_argument("--dist", default="dist", help="pasta de saída do PyInstaller (padrão: dist)")
     args = parser.parse_args()
 
-    dist = ROOT / "dist"
+    dist = ROOT / args.dist
     zip_path = dist / f"{APP_NAME}-{APP_VERSION}-win64.zip"
     digest = build_zip(dist / APP_NAME, zip_path)
     size_mb = zip_path.stat().st_size / 1e6
