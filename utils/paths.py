@@ -10,7 +10,7 @@ from pathlib import Path
 APP_NAME = "etioboard"
 APP_DISPLAY_NAME = "etioboard"
 LEGACY_APP_NAME = "VoiceStudio"  # nome antigo (dados migrados na 1ª execução)
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 
 def is_frozen() -> bool:

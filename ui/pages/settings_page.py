@@ -28,7 +28,7 @@ from ui.theme import ACCENTS
 from ui.widgets.common import Card, button, label
 from ui.widgets.hotkey_edit import HotkeyEdit
 from ui.widgets.param_slider import ParamSlider
-from utils.paths import app_data_dir
+from utils.paths import APP_VERSION, app_data_dir
 
 AUTO = "__auto__"
 DEFAULT = "__default__"
@@ -257,6 +257,40 @@ class SettingsPage(QWidget):
         ui.body.addLayout(f4)
         col.addWidget(ui)
 
+        # ============================================================ atualizações
+        upd = Card(padding=18)
+        upd.body.addWidget(label("Atualizações", "H2"))
+        urow = QHBoxLayout()
+        urow.setSpacing(10)
+        urow.addWidget(label(f"Versão instalada: {APP_VERSION}", "H3"))
+        self.update_status = label("", "Dim", wrap=True)
+        urow.addWidget(self.update_status, 1)
+        self.update_check_btn = button("Procurar atualizações", "refresh")
+        self.update_check_btn.clicked.connect(lambda: ctl.updates.check())
+        self.update_notes_btn = button("Ver novidades", "external")
+        self.update_notes_btn.clicked.connect(self._open_release_page)
+        self.update_skip_btn = button("Ignorar esta versão", flat=True)
+        self.update_skip_btn.clicked.connect(self._skip_update)
+        self.update_install_btn = button("Baixar e instalar", "upload", accent=True)
+        self.update_install_btn.clicked.connect(self._install_update)
+        for b in (self.update_check_btn, self.update_notes_btn, self.update_skip_btn, self.update_install_btn):
+            urow.addWidget(b)
+        upd.body.addLayout(urow)
+        self.update_notes = label("", "Faint", wrap=True)
+        upd.body.addWidget(self.update_notes)
+        self.update_bar = QProgressBar()
+        self.update_bar.setTextVisible(False)
+        self.update_bar.setFixedHeight(6)
+        upd.body.addWidget(self.update_bar)
+        self.update_auto = QCheckBox("Procurar atualizações automaticamente ao iniciar")
+        self.update_auto.setChecked(bool(s.get("updates.check_on_start", True)))
+        self.update_auto.toggled.connect(lambda on: s.set("updates.check_on_start", on))
+        upd.body.addWidget(self.update_auto)
+        col.addWidget(upd)
+        ctl.updates.state_changed.connect(self._on_update_state)
+        ctl.updates.progress.connect(self._on_update_progress)
+        self._on_update_state(ctl.updates.state, ctl.updates.message)
+
         # ============================================================ dados
         data = Card(padding=18)
         data.body.addWidget(label("Dados", "H2"))
@@ -465,6 +499,62 @@ class SettingsPage(QWidget):
             return
         self.ctl.notify.emit("success", f"{n} configurações importadas. Reinicie o app para aplicar todas.")
         self.load_audio_settings()
+
+    # ------------------------------------------------------------------ atualizações
+    def _on_update_state(self, state: str, message: str) -> None:
+        info = self.ctl.updates.info
+        available = state == "available" and info is not None
+        busy = state in ("checking", "downloading", "ready")
+        self.update_status.setText(message)
+        self.update_status.setStyleSheet("color: #F87171;" if state == "error" else "")
+        self.update_check_btn.setEnabled(not busy)
+        self.update_install_btn.setVisible(available)
+        self.update_skip_btn.setVisible(available)
+        self.update_notes_btn.setVisible(info is not None and state in ("available", "downloading", "ready"))
+        self.update_bar.setVisible(state in ("downloading", "ready"))
+        if state != "downloading":
+            self.update_bar.setRange(0, 1)
+            self.update_bar.setValue(1 if state == "ready" else 0)
+        notes = info.notes if (info and state in ("available", "downloading")) else ""
+        if len(notes) > 600:
+            notes = notes[:600].rstrip() + "…"
+        self.update_notes.setText(notes)
+        self.update_notes.setVisible(bool(notes))
+
+    def _on_update_progress(self, done: int, total: int) -> None:
+        if total > 0:
+            self.update_bar.setRange(0, 1000)
+            self.update_bar.setValue(int(1000 * done / total))
+            self.update_status.setText(f"Baixando… {done / 1e6:.0f} de {total / 1e6:.0f} MB")
+        else:
+            self.update_bar.setRange(0, 0)
+
+    def _open_release_page(self) -> None:
+        info = self.ctl.updates.info
+        if info:
+            QDesktopServices.openUrl(QUrl(info.page_url))
+
+    def _skip_update(self) -> None:
+        self.ctl.updates.skip_version()
+        self.update_install_btn.hide()
+        self.update_skip_btn.hide()
+        self.update_status.setText("Versão ignorada. Você ainda pode instalá-la procurando de novo.")
+
+    def _install_update(self) -> None:
+        info = self.ctl.updates.info
+        if info is None:
+            return
+        ok, reason = self.ctl.updates.can_install()
+        if not ok:
+            QMessageBox.information(self, "Atualização", reason)
+            return
+        if QMessageBox.question(
+            self, "Instalar atualização",
+            f"Baixar e instalar a versão {info.version}?\n\nQuando o download terminar, o etioboard fecha, "
+            "instala a nova versão e abre de novo sozinho (o áudio para por alguns segundos). "
+            "Seus sons, presets e configurações são mantidos.",
+        ) == QMessageBox.Yes:
+            self.ctl.updates.download_and_install()
 
     def _restore_presets(self) -> None:
         if QMessageBox.question(self, "Restaurar presets",

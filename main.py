@@ -5,13 +5,13 @@ import argparse
 import logging
 import sys
 
-from PySide6.QtCore import QLockFile, Qt
+from PySide6.QtCore import QLockFile, Qt, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from utils.logging_setup import setup_logging
-from utils.paths import APP_DISPLAY_NAME, APP_NAME, app_data_dir, migrate_legacy_data
+from utils.paths import APP_DISPLAY_NAME, APP_NAME, APP_VERSION, app_data_dir, migrate_legacy_data
 
 log = logging.getLogger("etioboard")
 SERVER_NAME = f"{APP_NAME}-single-instance"
@@ -37,6 +37,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--minimized", action="store_true", help="iniciar na bandeja do sistema")
     parser.add_argument("--restart", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--updated", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--selftest-analysis", metavar="ARQUIVO", help=argparse.SUPPRESS)
     args, _ = parser.parse_known_args()
 
@@ -111,6 +112,9 @@ def main() -> int:
     ctl.start()
     if not (args.minimized or ctl.settings.get("ui.start_minimized")):
         window.show()
+    if args.updated:
+        QTimer.singleShot(1200, lambda: ctl.notify.emit("success", f"etioboard atualizado para a versão {APP_VERSION}"))
+    QTimer.singleShot(5000, ctl.updates.check_on_startup)
 
     code = app.exec()
     try:

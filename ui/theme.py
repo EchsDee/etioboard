@@ -102,6 +102,7 @@ QPushButton#NavButton:checked {{ background: {p.accent_soft}; color: {p.text}; }
 #Card {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 14px; }}
 #CardInner {{ background: {p.surface2}; border-radius: 10px; }}
 #TopBar {{ background: {p.bg}; border-bottom: 1px solid {p.border}; }}
+#TopSep {{ background: {p.border}; }}
 #Chip {{ background: {p.surface}; border: 1px solid {p.border}; border-radius: 13px; padding: 4px 10px; color: {p.text_dim}; }}
 #Banner {{ background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.45); border-radius: 12px; }}
 #BannerError {{ background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.45); border-radius: 12px; }}
@@ -130,6 +131,12 @@ QPushButton[flat="true"] {{ background: transparent; border: none; padding: 6px;
 QPushButton[flat="true"]:hover {{ background: {p.surface2}; }}
 QPushButton#BigToggle {{ border-radius: 12px; padding: 10px 16px; text-align: left; }}
 QPushButton#BigToggle:checked {{ background: {p.accent_soft}; border-color: {p.accent}; }}
+QPushButton#UpdatePill {{ background: {p.accent_soft}; border: 1px solid {p.accent}; border-radius: 10px; padding: 2px 9px; color: {p.text}; font-size: 8.5pt; }}
+QPushButton#UpdatePill:hover {{ background: {p.accent}; color: white; }}
+#Segmented {{ background: {p.surface2}; border: 1px solid {p.border}; border-radius: 10px; }}
+QPushButton#SegButton {{ background: transparent; border: 1px solid transparent; border-radius: 7px; padding: 6px 14px; color: {p.text_dim}; }}
+QPushButton#SegButton:hover {{ color: {p.text}; }}
+QPushButton#SegButton:checked {{ background: {p.accent_soft}; border-color: {p.accent}; color: {p.text}; }}
 QPushButton#MuteButton:checked {{ background: rgba(239,68,68,0.18); border-color: {p.danger}; color: #F87171; }}
 QToolButton {{ background: transparent; border: none; border-radius: 8px; padding: 5px; }}
 QToolButton:hover {{ background: {p.surface2}; }}

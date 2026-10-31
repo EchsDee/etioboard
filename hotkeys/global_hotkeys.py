@@ -2,6 +2,10 @@
 
 Uma thread dedicada registra os atalhos e roda o laço de mensagens Win32; os pedidos
 de registro chegam por fila e são processados nessa mesma thread (exigência da API).
+
+O RegisterHotKey só avisa quando a combinação é pressionada. Para saber quando ela é solta
+(modo "segurar"), um timer da própria thread verifica a tecla principal enquanto ela estiver
+pressionada e chama ``on_release``.
 """
 from __future__ import annotations
 
@@ -19,6 +23,8 @@ log = logging.getLogger(__name__)
 
 WM_HOTKEY = 0x0312
 WM_QUIT = 0x0012
+WM_TIMER = 0x0113
+RELEASE_POLL_MS = 15
 WM_APP_WAKE = 0x8000 + 1
 
 if sys.platform == "win32":
@@ -31,11 +37,20 @@ if sys.platform == "win32":
     _user32.GetMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT, wintypes.UINT]
     _user32.PeekMessageW.argtypes = [ctypes.POINTER(wintypes.MSG), wintypes.HWND, wintypes.UINT,
                                      wintypes.UINT, wintypes.UINT]
+    _user32.SetTimer.argtypes = [wintypes.HWND, ctypes.c_size_t, wintypes.UINT, ctypes.c_void_p]
+    _user32.SetTimer.restype = ctypes.c_size_t
+    _user32.KillTimer.argtypes = [wintypes.HWND, ctypes.c_size_t]
+    _user32.GetAsyncKeyState.argtypes = [ctypes.c_int]
+    _user32.GetAsyncKeyState.restype = ctypes.c_short
 
 
 class GlobalHotkeyManager:
-    def __init__(self, on_trigger: Callable[[str], None]):
+    def __init__(self, on_trigger: Callable[[str], None], on_release: Callable[[str], None] | None = None):
         self.on_trigger = on_trigger
+        self.on_release = on_release
+        self._vks: dict[int, int] = {}        # id -> tecla principal
+        self._held: dict[str, int] = {}       # ação pressionada -> tecla principal
+        self._timer = 0
         self._requests: queue.Queue = queue.Queue()
         self._thread_id: int | None = None
         self._ready = threading.Event()
@@ -113,12 +128,34 @@ class GlobalHotkeyManager:
                         self.on_trigger(action)
                     except Exception:  # noqa: BLE001
                         log.exception("Erro ao executar atalho %s", action)
+                    if self.on_release and action not in self._held:
+                        self._held[action] = self._vks[int(msg.wParam)]
+                        if not self._timer:
+                            self._timer = user32.SetTimer(None, 0, RELEASE_POLL_MS, None)
+            elif msg.message == WM_TIMER and self._timer and msg.wParam == self._timer:
+                self._poll_released()
             elif msg.message == WM_APP_WAKE:
                 self._process_requests()
         for hid in list(self._actions):
             user32.UnregisterHotKey(None, hid)
         self._actions.clear()
         self._ids.clear()
+        if self._timer:
+            user32.KillTimer(None, self._timer)
+            self._timer = 0
+
+    def _poll_released(self) -> None:
+        for action, vk in list(self._held.items()):
+            if _user32.GetAsyncKeyState(vk) & 0x8000:
+                continue
+            del self._held[action]
+            try:
+                self.on_release(action)
+            except Exception:  # noqa: BLE001
+                log.exception("Erro ao soltar atalho %s", action)
+        if not self._held:
+            _user32.KillTimer(None, self._timer)
+            self._timer = 0
 
     def _process_requests(self) -> None:
         user32 = _user32
@@ -131,6 +168,7 @@ class GlobalHotkeyManager:
             if old is not None:
                 user32.UnregisterHotKey(None, old)
                 self._actions.pop(old, None)
+                self._vks.pop(old, None)
                 self._hotkeys.pop(action, None)
             if op == "unregister":
                 reply.put((True, ""))
@@ -145,6 +183,7 @@ class GlobalHotkeyManager:
             if user32.RegisterHotKey(None, hid, mods | MOD_NOREPEAT, vk):
                 self._ids[action] = hid
                 self._actions[hid] = action
+                self._vks[hid] = vk
                 self._hotkeys[action] = hotkey
                 reply.put((True, ""))
             else:

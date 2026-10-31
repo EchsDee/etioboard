@@ -142,9 +142,23 @@ A ordem é configurável no Voice Changer, pelo botão de ordem de processamento
 
 ```bat
 .venv\Scripts\pip install -r requirements-dev.txt
-.venv\Scripts\python -m pytest tests -q      :: 96 testes
+.venv\Scripts\python -m pytest tests -q      :: testes
 build.bat                                     :: testes + ícone + PyInstaller → dist\etioboard\
 ```
+
+## Atualizações
+
+O app procura novas versões nas [releases do GitHub](https://github.com/EchsDee/etioboard/releases) ao iniciar
+(no máximo a cada 6 h) ou em **Configurações → Atualizações**. Ao instalar, ele baixa o zip da release, confere
+o SHA-256, fecha, troca os arquivos da pasta do programa e abre de novo. Se algo falhar, a versão anterior é
+restaurada. Sons, presets e configurações ficam em `%APPDATA%\etioboard` e não são tocados. O registro fica em
+`%APPDATA%\etioboard\logs\update.log`.
+
+Para publicar uma versão:
+
+1. Aumente `APP_VERSION` em `utils/paths.py`, faça commit e push.
+2. Rode `release.bat "Notas da versão"`: gera o build, o zip `etioboard-<versão>-win64.zip` com o `.sha256` e
+   cria a release `v<versão>` com o `gh`.
 
 ## Dicas de latência
 

@@ -123,6 +123,21 @@ class PresetManager:
         if normal:
             self.set_default(normal["id"])
 
+    def disable_builtin_gate(self) -> int:
+        """Desliga o noise gate que as versões antigas ligavam nos presets de fábrica.
+
+        Só mexe em presets de fábrica cujo gate ainda está com o limiar original (-50 dB);
+        se o usuário ajustou o gate, a escolha dele é mantida.
+        """
+        changed = 0
+        for p in self.all():
+            gate = p.state.get("noise_gate", {})
+            if p.builtin_key and gate.get("enabled") and gate.get("params", {}).get("threshold_db") == -50.0:
+                gate["enabled"] = False
+                self.update_state(p.id, p.state)
+                changed += 1
+        return changed
+
     def restore_builtins(self) -> int:
         """Recria/restaura os presets originais (mantém os presets do usuário)."""
         restored = 0

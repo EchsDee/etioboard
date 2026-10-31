@@ -3,10 +3,12 @@ from __future__ import annotations
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QFrame,
     QHBoxLayout,
     QInputDialog,
     QMessageBox,
+    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -18,6 +20,12 @@ from presets.preset_manager import Preset
 from ui import theme
 from ui.widgets.common import Card, button, label, tool_button
 from ui.widgets.hotkey_edit import HotkeyEdit
+
+MODE_HELP = {
+    "switch": "Apertar o atalho troca para o preset, que continua ativo até você trocar de novo.",
+    "hold": "O preset fica ativo só enquanto você segura o atalho. Ao soltar, volta para a voz anterior.",
+    "toggle": "Apertar o atalho ativa o preset; apertar de novo volta para a voz anterior.",
+}
 
 
 class PresetRow(QFrame):
@@ -132,6 +140,30 @@ class PresetsPage(QWidget):
         scroll.setWidget(self.list_host)
 
         tip = Card(padding=12)
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(12)
+        mode_row.addWidget(label("Atalhos dos presets", "H3"))
+        seg = QFrame()
+        seg.setObjectName("Segmented")
+        seg_lay = QHBoxLayout(seg)
+        seg_lay.setContentsMargins(3, 3, 3, 3)
+        seg_lay.setSpacing(2)
+        self.mode_group = QButtonGroup(self)
+        current = ctl.preset_hotkey_mode
+        for mode, text in ctl.PRESET_HOTKEY_MODES.items():
+            b = QPushButton(text)
+            b.setObjectName("SegButton")
+            b.setCheckable(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.setChecked(mode == current)
+            b.setToolTip(MODE_HELP[mode])
+            b.clicked.connect(lambda _=False, m=mode: self._set_mode(m))
+            self.mode_group.addButton(b)
+            seg_lay.addWidget(b)
+        mode_row.addWidget(seg)
+        self.mode_help = label(MODE_HELP[current], "Dim", wrap=True)
+        mode_row.addWidget(self.mode_help, 1)
+        tip.body.addLayout(mode_row)
         tip.body.addWidget(label("Dica: os atalhos “Próximo/Anterior preset” podem ser configurados em "
                                  "Configurações → Atalhos globais.", "Faint", wrap=True))
 
@@ -145,6 +177,10 @@ class PresetsPage(QWidget):
         ctl.presets_changed.connect(self.reload)
         ctl.active_preset_changed.connect(lambda _id: self.reload())
         self.reload()
+
+    def _set_mode(self, mode: str) -> None:
+        self.ctl.set_preset_hotkey_mode(mode)
+        self.mode_help.setText(MODE_HELP[mode])
 
     def reload(self) -> None:
         while self.list_lay.count():

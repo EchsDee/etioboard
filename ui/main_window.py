@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 
 from core.app_controller import AppController
 from ui import icons, theme
+from ui.frameless import IS_WINDOWS, FramelessHelper
 from ui.pages.autotune_page import AutoTunePage
 from ui.pages.dashboard_page import DashboardPage
 from ui.pages.mixer_page import MixerPage
@@ -33,6 +34,7 @@ from ui.widgets.common import button, label
 from ui.widgets.hotkey_edit import HotkeyEdit
 from ui.widgets.level_meter import ActivityDot, LevelMeter, lin_to_frac
 from ui.widgets.toast import Toast
+from ui.widgets.window_controls import WindowControls
 from utils.paths import APP_DISPLAY_NAME, APP_VERSION
 
 NAV = [
@@ -57,6 +59,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.ctl = ctl
         self._quitting = False
+        self._minimize_to_taskbar = False  # botão "Minimizar" ignora a opção de minimizar para a bandeja
+        self.frameless = FramelessHelper(self)
+        if IS_WINDOWS:
+            self.setWindowFlags(self.windowFlags() | Qt.FramelessWindowHint)
         self.setWindowTitle(APP_DISPLAY_NAME)
         self.setWindowIcon(icons.app_icon())
         self.setMinimumSize(980, 640)
@@ -100,7 +106,9 @@ class MainWindow(QMainWindow):
         sv = QVBoxLayout(side)
         sv.setContentsMargins(14, 18, 14, 16)
         sv.setSpacing(4)
-        brand = QHBoxLayout()
+        brand_box = QWidget()
+        brand = QHBoxLayout(brand_box)
+        brand.setContentsMargins(0, 0, 0, 0)
         logo = QLabel()
         logo.setPixmap(icons.app_icon().pixmap(34, 34))
         brand.addWidget(logo)
@@ -109,8 +117,9 @@ class MainWindow(QMainWindow):
         bt.addWidget(label(APP_DISPLAY_NAME, "Brand"))
         bt.addWidget(label("Voice changer & soundboard", "BrandSub"))
         brand.addLayout(bt, 1)
-        sv.addLayout(brand)
+        sv.addWidget(brand_box)
         sv.addSpacing(22)
+        self.frameless.drag_areas.append(brand_box)
 
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
@@ -144,7 +153,19 @@ class MainWindow(QMainWindow):
         self.side_detail = label("", "Faint", wrap=True)
         fl.addWidget(self.side_detail)
         sv.addWidget(foot)
-        sv.addWidget(label(f"v{APP_VERSION}", "Faint"))
+        ver_row = QHBoxLayout()
+        ver_row.setSpacing(6)
+        ver_row.addWidget(label(f"v{APP_VERSION}", "Faint"))
+        ver_row.addStretch(1)
+        self.update_btn = QPushButton("Atualizar")
+        self.update_btn.setObjectName("UpdatePill")
+        self.update_btn.setCursor(Qt.PointingHandCursor)
+        self.update_btn.setIcon(icons.icon("upload", p.accent_hover, 14))
+        self.update_btn.setIconSize(QSize(12, 12))
+        self.update_btn.clicked.connect(lambda: self.go(SETTINGS_PAGE))
+        self.update_btn.hide()
+        ver_row.addWidget(self.update_btn)
+        sv.addLayout(ver_row)
         h.addWidget(side)
 
         # ---------- área principal
@@ -169,6 +190,8 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(root)
         ctl.engine_status.connect(self._on_status)
+        ctl.updates.state_changed.connect(self._on_update_state)
+        ctl.updates.install_requested.connect(self._install_update)
         ctl.mute_changed.connect(self._sync_quick)
         ctl.voice_enabled_changed.connect(lambda _on: self._sync_quick())
         ctl.playback_changed.connect(lambda _on: self._sync_quick())
@@ -182,8 +205,9 @@ class MainWindow(QMainWindow):
         bar.setObjectName("TopBar")
         bar.setFixedHeight(58)
         h = QHBoxLayout(bar)
-        h.setContentsMargins(20, 8, 20, 8)
+        h.setContentsMargins(20, 8, 10 if IS_WINDOWS else 20, 8)
         h.setSpacing(10)
+        self.frameless.drag_areas.append(bar)
 
         # chips de dispositivos
         self.chip_in = QFrame()
@@ -208,6 +232,7 @@ class MainWindow(QMainWindow):
         self.chip_out = QFrame()
         self.chip_out.setObjectName("Chip")
         self.chip_out.installEventFilter(self)  # clique: abre Configurações quando falta o cabo virtual
+        self.frameless.no_drag.append(self.chip_out)
         co = QHBoxLayout(self.chip_out)
         co.setContentsMargins(10, 4, 12, 4)
         co.setSpacing(8)
@@ -250,6 +275,20 @@ class MainWindow(QMainWindow):
         stop = button("", "stop-all", danger=True, tooltip="Parar todos os sons (Esc)")
         stop.clicked.connect(self.ctl.stop_all)
         h.addWidget(stop)
+
+        if IS_WINDOWS:
+            sep = QFrame()
+            sep.setObjectName("TopSep")
+            sep.setFixedSize(1, 24)
+            h.addSpacing(4)
+            h.addWidget(sep)
+            self.win_controls = WindowControls()
+            self.win_controls.btn_tray.setVisible(QSystemTrayIcon.isSystemTrayAvailable())
+            self.win_controls.to_tray.connect(self.send_to_tray)
+            self.win_controls.minimize.connect(self.minimize_to_taskbar)
+            self.win_controls.toggle_maximize.connect(self.toggle_maximized)
+            self.win_controls.close_clicked.connect(self.close)
+            h.addWidget(self.win_controls)
         return bar
 
     def _build_tray(self) -> None:
@@ -373,6 +412,20 @@ class MainWindow(QMainWindow):
             self.tray.showMessage(APP_DISPLAY_NAME, message,
                                   QSystemTrayIcon.Warning if level == "warning" else QSystemTrayIcon.Critical, 3000)
 
+    def _on_update_state(self, state: str, message: str) -> None:
+        info = self.ctl.updates.info
+        if state == "available" and info:
+            self.update_btn.setText(f"v{info.version}")
+            self.update_btn.setToolTip(f"Nova versão {info.version} disponível. Clique para ver e instalar.")
+            self.update_btn.show()
+            self._notify("info", f"Nova versão {info.version} disponível. Veja em Configurações → Atualizações.")
+        elif state in ("uptodate", "idle"):
+            self.update_btn.hide()
+
+    def _install_update(self) -> None:
+        if self.ctl.updates.apply_and_quit():
+            self.quit()
+
     def _capture_hook(self, capturing: bool) -> None:
         if capturing:
             self.ctl.hotkeys.unregister_all()
@@ -406,6 +459,31 @@ class MainWindow(QMainWindow):
         self.raise_()
         self.activateWindow()
 
+    def send_to_tray(self) -> None:
+        self.hide()
+        self._tray_hint()
+
+    def _tray_hint(self) -> None:
+        if not self.ctl.settings.get("ui.tray_hint_shown"):
+            self.tray.showMessage(APP_DISPLAY_NAME, f"O {APP_DISPLAY_NAME} continua rodando na bandeja do sistema.",
+                                  QSystemTrayIcon.Information, 3000)
+            self.ctl.settings.set("ui.tray_hint_shown", True)
+
+    def minimize_to_taskbar(self) -> None:
+        self._minimize_to_taskbar = True
+        self.showMinimized()
+
+    def toggle_maximized(self) -> None:
+        self.showNormal() if self.isMaximized() else self.showMaximized()
+
+    def showEvent(self, e) -> None:
+        super().showEvent(e)
+        self.frameless.apply()
+
+    def nativeEvent(self, event_type, message):
+        handled = self.frameless.native_event(event_type, message)
+        return handled if handled is not None else super().nativeEvent(event_type, message)
+
     def _tray_activated(self, reason) -> None:
         if reason in (QSystemTrayIcon.Trigger, QSystemTrayIcon.DoubleClick):
             if self.isVisible() and not self.isMinimized():
@@ -414,9 +492,15 @@ class MainWindow(QMainWindow):
                 self.show_normal()
 
     def changeEvent(self, e) -> None:
-        if e.type() == e.Type.WindowStateChange and self.isMinimized():
-            if self.ctl.settings.get("ui.minimize_to_tray") and QSystemTrayIcon.isSystemTrayAvailable():
-                QTimer.singleShot(0, self.hide)
+        if e.type() == e.Type.WindowStateChange:
+            if self.isMinimized():
+                if (not self._minimize_to_taskbar and self.ctl.settings.get("ui.minimize_to_tray")
+                        and QSystemTrayIcon.isSystemTrayAvailable()):
+                    QTimer.singleShot(0, self.hide)
+            else:
+                self._minimize_to_taskbar = False
+            if hasattr(self, "win_controls"):
+                self.win_controls.set_maximized(self.isMaximized())
         super().changeEvent(e)
 
     def resizeEvent(self, e) -> None:
@@ -432,11 +516,7 @@ class MainWindow(QMainWindow):
         if (not self._quitting and self.ctl.settings.get("ui.close_to_tray")
                 and QSystemTrayIcon.isSystemTrayAvailable()):
             e.ignore()
-            self.hide()
-            if not self.ctl.settings.get("ui.tray_hint_shown"):
-                self.tray.showMessage(APP_DISPLAY_NAME, f"O {APP_DISPLAY_NAME} continua rodando na bandeja do sistema.",
-                                      QSystemTrayIcon.Information, 3000)
-                self.ctl.settings.set("ui.tray_hint_shown", True)
+            self.send_to_tray()
             return
         e.accept()
         self.quit()

@@ -95,6 +95,22 @@ def test_presets_crud_and_persistence(db):
     assert pm.get(deep.id).state["reverb"]["enabled"] is False
 
 
+def test_builtin_presets_have_no_gate_and_old_gate_is_disabled(db):
+    pm = PresetManager(db)
+    pm.seed_builtins()
+    assert all(not p.state["noise_gate"]["enabled"] for p in pm.all())
+
+    # Banco de uma versão antiga: gate de fábrica ligado (-50 dB) e um gate ajustado pelo usuário.
+    old, tuned = pm.all()[:2]
+    old.state["noise_gate"] = {"enabled": True, "params": {**old.state["noise_gate"]["params"], "threshold_db": -50.0}}
+    tuned.state["noise_gate"] = {"enabled": True, "params": {**tuned.state["noise_gate"]["params"], "threshold_db": -42.0}}
+    pm.update_state(old.id, old.state)
+    pm.update_state(tuned.id, tuned.state)
+    assert pm.disable_builtin_gate() == 1
+    assert pm.get(old.id).state["noise_gate"]["enabled"] is False
+    assert pm.get(tuned.id).state["noise_gate"]["enabled"] is True
+
+
 def test_settings_flush_and_reload(db, tmp_path):
     s = SettingsManager(db)
     seen = []

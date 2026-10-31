@@ -56,6 +56,12 @@ _PATHS: dict[str, str] = {
             '<path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
     "check": '<path d="M20 6 9 17l-5-5"/>',
     "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+    "win-min": '<path d="M6 12h12"/>',
+    "win-max": '<rect x="5.5" y="5.5" width="13" height="13" rx="2.5"/>',
+    "win-restore": '<rect x="5" y="9" width="10" height="10" rx="2"/><path d="M9 9V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v6'
+                   'a2 2 0 0 1-2 2h-2"/>',
+    "win-tray": '<path d="M12 4v9"/><path d="m8.5 9.5 3.5 3.5 3.5-3.5"/><path d="M4 15v2.5A2.5 2.5 0 0 0 6.5 20h11'
+                'a2.5 2.5 0 0 0 2.5-2.5V15"/>',
     "power": '<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/>',
     "keyboard": '<path d="M10 8h.01"/><path d="M12 12h.01"/><path d="M14 8h.01"/><path d="M16 12h.01"/>'
                 '<path d="M18 8h.01"/><path d="M6 8h.01"/><path d="M7 16h10"/><path d="M8 12h.01"/>'

@@ -58,6 +58,7 @@ DEFAULTS: dict[str, Any] = {
     "soundboard.target_lufs": -24.0,
     "soundboard.button_size": 120,
     # Interface / sistema
+    "hotkeys.preset_mode": "switch",  # switch | hold | toggle
     "ui.theme": "dark",
     "ui.accent": "#8B5CF6",
     "ui.minimize_to_tray": True,
@@ -67,6 +68,9 @@ DEFAULTS: dict[str, Any] = {
     "ui.last_page": 0,
     "ui.last_category": "all",
     "system.start_with_windows": False,
+    "updates.check_on_start": True,
+    "updates.last_check": 0,
+    "updates.skipped_version": None,
 }
 
 

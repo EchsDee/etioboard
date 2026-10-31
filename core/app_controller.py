@@ -63,6 +63,7 @@ class AppController(QObject):
     _test_recorded = Signal(object)
 
     _hotkey_fired = Signal(str)
+    _hotkey_released = Signal(str)
     _status_bg = Signal(object)
     _play_failed = Signal(str)
 
@@ -76,15 +77,25 @@ class AppController(QObject):
             self.library.seed_defaults()
             self.presets.seed_builtins()
             self.db.mark_seeded()
+        if not self.settings.get("presets.builtin_gate_off"):
+            self.presets.disable_builtin_gate()
+            self.settings.set("presets.builtin_gate_off", True)
 
         self.devices = DeviceManager()
         self.engine = AudioEngine(self.devices)
         from core.autotune_controller import AutoTuneController
 
         self.autotune = AutoTuneController(self)
-        self.hotkeys = GlobalHotkeyManager(self._hotkey_fired.emit)
+        from core.update_controller import UpdateController
+
+        self.updates = UpdateController(self.settings, self)
+        self.hotkeys = GlobalHotkeyManager(self._hotkey_fired.emit, self._hotkey_released.emit)
+        # Voz a restaurar quando um atalho de preset em modo "segurar"/"alternar" termina.
+        self._preset_return: dict | None = None
+        self._preset_temp_id: int | None = None
 
         self._hotkey_fired.connect(self._on_hotkey)
+        self._hotkey_released.connect(self._on_hotkey_released)
         self._status_bg.connect(self._on_status)
         self._play_failed.connect(lambda msg: self.notify.emit("error", msg))
         self._test_recorded.connect(self._play_test_recording)
@@ -239,12 +250,64 @@ class AppController(QObject):
     def load_preset(self, preset_id: int, announce: bool = False) -> None:
         preset = self.presets.get(preset_id)
         if preset:
+            self._preset_return = self._preset_temp_id = None  # troca manual vence a temporária
             self._activate(preset, announce)
+
+    # ---------------------------------------------------------------- atalhos de preset
+    PRESET_HOTKEY_MODES = {"switch": "Trocar", "hold": "Segurar", "toggle": "Alternar"}
+
+    @property
+    def preset_hotkey_mode(self) -> str:
+        mode = self.settings.get("hotkeys.preset_mode", "switch")
+        return mode if mode in self.PRESET_HOTKEY_MODES else "switch"
+
+    def set_preset_hotkey_mode(self, mode: str) -> None:
+        if mode in self.PRESET_HOTKEY_MODES:
+            self.end_temporary_preset()
+            self.settings.set("hotkeys.preset_mode", mode)
+
+    def _preset_hotkey_pressed(self, preset_id: int) -> None:
+        mode = self.preset_hotkey_mode
+        if mode == "switch":
+            self.load_preset(preset_id, announce=True)
+            return
+        if mode == "toggle" and self._preset_temp_id == preset_id:
+            self.end_temporary_preset()
+            return
+        preset = self.presets.get(preset_id)
+        if preset is None:
+            return
+        if self._preset_return is None:
+            # Guarda a voz atual, inclusive ajustes ainda não salvos no preset.
+            self._preset_return = {"preset_id": self.active_preset_id, "state": self.engine.voice.state()}
+        self._preset_temp_id = preset_id
+        self._activate(preset, announce=(mode == "toggle"))
+
+    def _on_hotkey_released(self, owner: str) -> None:
+        kind, _, ident = owner.partition(":")
+        if (kind == "preset" and self.preset_hotkey_mode == "hold"
+                and self._preset_temp_id == int(ident)):
+            self.end_temporary_preset()
+
+    def end_temporary_preset(self) -> None:
+        """Volta à voz que estava ativa antes do atalho de "segurar"/"alternar"."""
+        snap, self._preset_return, self._preset_temp_id = self._preset_return, None, None
+        if snap is None:
+            return
+        preset = self.presets.get(snap["preset_id"]) or self.presets.default()
+        if preset is None:
+            return
+        self._activate(preset, announce=False)
+        if normalize_state(snap["state"]) != self._saved_state:
+            self.engine.voice.apply_state(snap["state"])
+            self._update_modified()
+            self.voice_state_changed.emit()
 
     def cycle_preset(self, step: int) -> None:
         presets = self.presets.all()
         if not presets:
             return
+        self._preset_return = self._preset_temp_id = None
         ids = [p.id for p in presets]
         cur = self.active_preset_id
         idx = ids.index(cur) if cur in ids else -1
@@ -354,6 +417,11 @@ class AppController(QObject):
         self.set_monitor_sources(voice=bool(enabled))
         if enabled and self.engine.running and not self.engine.has_monitor:
             self.notify.emit("warning", "Nenhuma saída de monitor ativa. Ative-a em Configurações → Áudio.")
+        elif enabled and not self.settings.get("ui.playback_echo_hint_shown"):
+            # Em caixas de som, o microfone capta a própria voz atrasada e o Discord recebe eco.
+            self.settings.set("ui.playback_echo_hint_shown", True)
+            self.notify.emit("warning", "Use o playback só com fones de ouvido: em caixas de som ou no som do "
+                                        "monitor, o microfone capta sua voz de volta e quem ouve recebe eco.")
 
     def toggle_playback(self) -> None:
         self.set_playback(not self.playback)
@@ -599,7 +667,7 @@ class AppController(QObject):
         if kind == "snippet":
             self.play_snippet(int(ident))
         elif kind == "preset":
-            self.load_preset(int(ident), announce=True)
+            self._preset_hotkey_pressed(int(ident))
         elif ident == "toggle_mute":
             self.toggle_mute()
         elif ident == "toggle_voice":

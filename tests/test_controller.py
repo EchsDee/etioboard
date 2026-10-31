@@ -105,3 +105,45 @@ def test_playback_toggle_updates_mixer_and_setting(ctl):
 def test_record_test_requires_running_audio(ctl):
     ctl.record_test(1.0)
     assert ctl.test_state == "idle"  # motor parado: só avisa
+
+
+def test_preset_hotkey_modes(ctl):
+    presets = {p.builtin_key: p.id for p in ctl.preset_list()}
+    normal, demon, robot = presets["normal"], presets["demon"], presets["robot"]
+    ctl.load_preset(normal)
+    ctl.set_effect_enabled("reverb", True)  # ajuste não salvo deve sobreviver ao atalho temporário
+    assert ctl.voice_modified
+
+    # Trocar (padrão): continua no preset depois de soltar.
+    ctl.set_preset_hotkey_mode("switch")
+    ctl._on_hotkey(f"preset:{demon}")
+    ctl._on_hotkey_released(f"preset:{demon}")
+    assert ctl.active_preset_id == demon
+    ctl.load_preset(normal)
+    ctl.set_effect_enabled("reverb", True)
+
+    # Segurar: ativo só enquanto segura; soltar volta à voz anterior (com o ajuste não salvo).
+    ctl.set_preset_hotkey_mode("hold")
+    ctl._on_hotkey(f"preset:{demon}")
+    assert ctl.active_preset_id == demon
+    ctl._on_hotkey(f"preset:{robot}")          # outro atalho durante o primeiro
+    ctl._on_hotkey_released(f"preset:{demon}")  # soltar o antigo não desfaz o atual
+    assert ctl.active_preset_id == robot
+    ctl._on_hotkey_released(f"preset:{robot}")
+    assert ctl.active_preset_id == normal
+    assert ctl.voice_state()["reverb"]["enabled"] and ctl.voice_modified
+
+    # Alternar: aperta liga, aperta de novo volta.
+    ctl.set_preset_hotkey_mode("toggle")
+    ctl._on_hotkey(f"preset:{demon}")
+    ctl._on_hotkey_released(f"preset:{demon}")
+    assert ctl.active_preset_id == demon
+    ctl._on_hotkey(f"preset:{demon}")
+    assert ctl.active_preset_id == normal and ctl.voice_state()["reverb"]["enabled"]
+
+    # Troca manual durante um preset temporário vence: nada é restaurado depois.
+    ctl._on_hotkey(f"preset:{demon}")
+    ctl.load_preset(robot)
+    ctl._on_hotkey(f"preset:{demon}")
+    ctl._on_hotkey(f"preset:{demon}")
+    assert ctl.active_preset_id == robot
